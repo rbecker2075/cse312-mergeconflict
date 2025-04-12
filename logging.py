@@ -1,10 +1,10 @@
-from fastapi import FastAPI , Request
+from fastapi import FastAPI , Request, Response
 import datetime
 
-
-def request_log(request : Request):
+def request_log(request : Request, response : Response ):
    time = datetime.now()
-   content = time.isoformat() + "\n" + request.client+host+"\n" + request.method + "\n" + request.url.path + '\n'
+   content = time.isoformat() + "\n client" + request.client+host+"\n method" + request.method + "\n url path" + request.url.path + '\n response code' + Response.status_code 
    with open("request_logs.txt","a") as f:
         f.write(content)
 
+#to do 
