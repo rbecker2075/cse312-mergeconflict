@@ -7,4 +7,10 @@ def request_log(request : Request, response : Response ):
    with open("request_logs.txt","a") as f:
         f.write(content)
 
-#to do 
+#to do docker logging, volume
+
+# full request and response logging 
+
+#errors 
+
+#registration/loging errors 
