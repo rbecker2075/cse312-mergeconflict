@@ -13,4 +13,4 @@
 * DockerCompose
 * Database
 * Authentication
-* Logging -- started, to use place Request object into parameter of path and pass to function in logging
+* Logging -- started, to use place Request and Response object into parameter of path and pass to function in logging
