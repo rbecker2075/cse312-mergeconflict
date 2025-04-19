@@ -50,5 +50,29 @@
             <a href="/register" class="button">Register</a>
         </div>
     </div>
+
+    <script>
+        // Fetch authentication status from the server
+        async function checkAuthStatus() {
+            try {
+                const response = await fetch('/api/users/@me');
+                const data = await response.json();
+                const authButtons = document.getElementById('auth-buttons');
+
+                if (!data.logged_in) {
+                    // User not logged in, show Login and Register buttons
+                    authButtons.innerHTML = `
+                        <a href="/login" class="button">Login</a>
+                        <a href="/register" class="button">Register</a>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error checking auth status:', error);
+            }
+        }
+
+        // Run the function on page load
+        checkAuthStatus();
+    </script>
 </body>
 </html>
