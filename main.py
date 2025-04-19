@@ -11,6 +11,7 @@ app = FastAPI(title='test',
               version='1.0')
 
 app.mount("/", StaticFiles(directory="public", html=True), name="static")
+app.mount("/imgs", StaticFiles(directory="public/imgs"), name="imgs")
 
 INDEX_FILE_PATH = os.path.join("public", "index.html")
 @app.get("/")
@@ -33,7 +34,9 @@ async def root(response: Response, request: Request):
 async def auth_status(request: Request):
     # Check user authentication status (this is just an example)
     # Replace with your actual authentication logic
-    logged_in = request.cookies.get("session_token") is not None
-    logged_in = request.cookies.get("auth_token") is not None
 
+    if request.cookies.get("auth_token") is not None:
+        logged_in = request.cookies.get("auth_token")
+    else:
+        logged_in = None
     return {"logged_in": logged_in}
