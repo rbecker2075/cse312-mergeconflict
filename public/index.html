@@ -12,22 +12,47 @@
             align-items: center;
             height: 100vh;
             margin: 0;
-            background: url('/imgs/Home_Background.jpg') no-repeat center center fixed;
+            background: url('imgs/Home_Background.jpg') no-repeat center center fixed;
             background-size: cover;
             color: #fff;
         }
         .container {
             text-align: center;
-            background: rgba(0, 0, 0, 0.5); /* Add a semi-transparent background for better readability */
+            background: rgba(0, 0, 0, 0.5);
             padding: 20px;
             border-radius: 10px;
         }
         .buttons {
-            margin-top: 20px;
+            position: absolute;
+            top: 20px; /* Adjust for padding from the top */
+            right: 20px; /* Adjust for padding from the right */
+            background: transparent; /* Fully transparent background */
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
         }
-        .button {
-            display: inline-block;
-            margin: 10px;
+        .button-image {
+            width: 150px;
+            height: auto;
+            margin: 5px 0;
+            cursor: pointer;
+        }
+        .username-box {
+            background: transparent;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+
+        }
+        .username-box input {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            font-size: 16px;
+            border: none;
+            border-radius: 5px;
+        }
+        .username-box button {
             padding: 10px 20px;
             font-size: 16px;
             color: #fff;
@@ -35,42 +60,56 @@
             border: none;
             border-radius: 5px;
             cursor: pointer;
-            text-decoration: none;
         }
-        .button:hover {
+        .username-box button:hover {
             background-color: #0056b3;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Merge.io</h1>
-        <div class="buttons">
-            <a href="/login" class="button">Login</a>
-            <a href="/register" class="button">Register</a>
+
+
+        <div class="buttons" id="auth-buttons">
+            <!-- Images will be dynamically added here -->
         </div>
+    <div class="username-box">
+
+        <input type="text" id="username" placeholder="Username">
+        <button id="play-button">Play</button>
     </div>
 
     <script>
         // Fetch authentication status from the server
         async function checkAuthStatus() {
             try {
-                const response = await fetch('/api/users/@me');
+                const response = await fetch('/auth/status');
                 const data = await response.json();
                 const authButtons = document.getElementById('auth-buttons');
 
                 if (!data.logged_in) {
-                    // User not logged in, show Login and Register buttons
+                    // User not logged in, show Login and Register buttons as images
                     authButtons.innerHTML = `
-                        <a href="/login" class="button">Login</a>
-                        <a href="/register" class="button">Register</a>
+                        <a href="/login">
+                            <img src="imgs/loginbutton.png" alt="Login" class="button-image">
+                        </a>
+                        <a href="/register">
+                            <img src="imgs/registerbutton.png" alt="Register" class="button-image">
+                        </a>
                     `;
                 }
             } catch (error) {
                 console.error('Error checking auth status:', error);
             }
         }
-
+         document.getElementById('play-button').addEventListener('click', () => {
+            const username = document.getElementById('username').value.trim();
+            if (username) {
+                // Redirect to /play with the username as a query parameter
+                window.location.href = `/play?username=${encodeURIComponent(username)}`;
+            } else {
+                alert('Please enter a username to continue.');
+            }
+        });
         // Run the function on page load
         checkAuthStatus();
     </script>
