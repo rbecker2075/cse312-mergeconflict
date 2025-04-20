@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Home Page</title>
+    <title>Register</title>
     <style>
         body {
             font-family: Arial, sans-serif;
             height: 100vh;
             margin: 0;
-            background: url('imgs/Home_Background.jpg') no-repeat center center fixed;
+            background: url('imgs/register_background.jpg') no-repeat center center fixed;
             background-size: cover;
             color: #fff;
             display: flex;
@@ -18,56 +18,50 @@
             position: relative;
         }
 
-        .buttons {
+        /* Back button */
+        .back-button {
             position: absolute;
             top: 20px;
-            right: 20px;
-            background: transparent;
-            display: flex;
-            flex-direction: column;
-            align-items: flex-end;
-        }
-        .button-image {
-            width: 150px;
-            height: auto;
-            margin: 5px 0;
+            left: 20px;
+            width: 70px; /* Increased width */
+            height: 70px; /* Increased height */
+            background: url('imgs/back.png') no-repeat center center;
+            background-size: cover;
+            border: none;
             cursor: pointer;
         }
 
-        @keyframes background-move {
-            0% { background-position: 0 0, 0 0; }
-            100% {
-                background-position: 100vw 0, 0 0;
-            }
-        }
-
-        /* Container for input and button */
+        /* Container for input fields and button */
         .input-container {
             display: flex;
             flex-direction: column;
             align-items: center;
+            text-align: center;
         }
 
+        /* Username box */
         .username-box {
             width: 100%;
-            max-width: 15em; /* Set max width */
+            max-width: 15em;
             display: flex;
             flex-direction: column;
             position: relative;
-            margin-left: -10%; /* Move username box 10% to the left */
+            margin-bottom: 35px; /* Increased gap */
+            margin-left: -25%;
         }
 
-        .input-group__label {
-            padding: 0 0.5em;
-            margin-bottom: 0.5em;
-            text-transform: uppercase;
-            font-size: 0.875em;
-            letter-spacing: 0.1em;
-            color: #ccd;
-            color: rgba(255, 220, 255, 0.6);
-            cursor: pointer;
+        /* Password boxes */
+        .password-box {
+            width: 100%;
+            max-width: 15em;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            margin-bottom: 15px;
+            margin-left: -25%;
         }
 
+        /* Input field styles */
         .input-group__input {
             color: #fff;
             font-size: 1.125rem;
@@ -96,6 +90,7 @@
             outline-offset: 0.5em;
         }
 
+        /* Login Button */
         .btn-border-reveal {
             background-color: #9b59b6;
             color: white;
@@ -107,7 +102,6 @@
             border-radius: 10px;
             cursor: pointer;
             z-index: 0;
-            margin-top: 15px;
         }
 
         .btn-border-reveal::after {
@@ -133,56 +127,43 @@
     </style>
 </head>
 <body>
-    <div class="buttons" id="auth-buttons">
-        <!-- Login/Register buttons will be dynamically added here -->
-    </div>
+    <!-- Back Button -->
+    <button class="back-button" onclick="window.location.href='/'"></button>
 
-    <!-- Container for input and button -->
+    <!-- Container for input fields and login button -->
     <div class="input-container">
+        <!-- Username input box -->
         <div class="username-box">
-
             <input class="input-group__input" type="text" id="username" placeholder="Enter your username">
         </div>
 
-        <!-- Start Game button centered below the username box -->
-        <button class="btn btn-border-reveal" id="play-button">Start Game</button>
+        <!-- Password input box -->
+        <div class="password-box">
+            <input class="input-group__input" type="password" id="password" placeholder="Enter your password">
+        </div>
+        <div class="password-box">
+            <input class="input-group__input" type="password" id="password2" placeholder="Enter your password again">
+        </div>
+
+        <!-- Login Button -->
+        <button class="btn btn-border-reveal" id="login-button">Login</button>
     </div>
 
     <script>
-        async function checkAuthStatus() {
-            try {
-                const response = await fetch('/auth/status');
-                const data = await response.json();
-                const authButtons = document.getElementById('auth-buttons');
-
-                if (!data.logged_in) {
-                    authButtons.innerHTML = `
-                        <a href="/login">
-                            <img src="imgs/loginbutton.png" alt="Login" class="button-image">
-                        </a>
-                        <a href="/register">
-                            <img src="imgs/registerbutton.png" alt="Register" class="button-image">
-                        </a>
-                    `;
-                }
-            } catch (error) {
-                console.error('Error checking auth status:', error);
-            }
-        }
-
-        const playButton = document.getElementById('play-button');
-        if (playButton) {
-            playButton.addEventListener('click', () => {
+        // Handle Login Button Click
+        const loginButton = document.getElementById('login-button');
+        if (loginButton) {
+            loginButton.addEventListener('click', () => {
                 const username = document.getElementById('username').value.trim();
-                if (username) {
-                    window.location.href = `/play?username=${encodeURIComponent(username)}`;
+                const password = document.getElementById('password').value.trim();
+
+                if (username && password) {
+                    console.log(`Logging in with Username: ${username}, Password: ${password}`);
                 } else {
-                    alert('Please enter a username to continue.');
+                    alert('Please enter both username and password.');
                 }
             });
         }
-
-        window.onload = checkAuthStatus;
     </script>
 </body>
 </html>

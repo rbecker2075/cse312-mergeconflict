@@ -1,22 +1,20 @@
 import os
 import uuid
-
-
-from fastapi.responses import FileResponse
 from fastapi import FastAPI, Request, Response
+from fastapi.responses import FileResponse
 from starlette.staticfiles import StaticFiles
 
-app = FastAPI(title='test',
-              description='testing desc',
-              version='1.0')
+app = FastAPI(title='test', description='testing desc', version='1.0')
 
+# Mount static files for public directory
 app.mount("/", StaticFiles(directory="public", html=True), name="static")
-app.mount("/imgs", StaticFiles(directory="public/imgs"), name="imgs")
 
-INDEX_FILE_PATH = os.path.join("public", "index.html")
+# Ensure this path exists
+INDEX_FILE_PATH = "public/index.html"
+LOGIN_PAGE_PATH = os.path.join("public", "login_page")  # Set the correct path to your login page
+
 @app.get("/")
 async def root(response: Response, request: Request):
-
     session_cookie = request.cookies.get("session") is not None
 
     if not session_cookie:
@@ -26,17 +24,17 @@ async def root(response: Response, request: Request):
         response.set_cookie(key="session", value=new_session_id, httponly=True, samesite="Lax")
 
     return FileResponse(INDEX_FILE_PATH)
+@app.get('/register')
+async def root(response: Response, request: Request):
+
+    return FileResponse('public/register.html')
 
 
 
+@app.get('/login')  # Ensure this route is correctly defined with a leading slash
+async def login(response: Response, request: Request):
+    return FileResponse(INDEX_FILE_PATH)
 
-@app.get("/auth/status")
-async def auth_status(request: Request):
-    # Check user authentication status (this is just an example)
-    # Replace with your actual authentication logic
-
-    if request.cookies.get("auth_token") is not None:
-        logged_in = request.cookies.get("auth_token")
-    else:
-        logged_in = None
-    return {"logged_in": logged_in}
+@app.get("/hello/{name}")
+async def say_hello(name: str):
+    return {"message": f"Hello {name}"}
