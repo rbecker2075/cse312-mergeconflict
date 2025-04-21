@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            height: 100vh;
+            margin: 0;
+            background: url('imgs/login_background.jpg') no-repeat center center fixed;
+            background-size: cover;
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+
+        /* Back button */
+          .back-button {
+        position: absolute;
+        top: 20px;
+        left: 20px;
+        width: 70px; /* Increased width */
+        height: 70px; /* Increased height */
+        background: url('imgs/back.png') no-repeat center center;
+        background-size: cover;
+        border: none;
+        cursor: pointer;
+    }
+
+        /* Container for input fields and button */
+        .input-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+
+        /* Box for input fields */
+        .username-box, .password-box {
+            width: 100%;
+            max-width: 15em;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            margin-bottom: 15px;
+            margin-left: -25%;
+        }
+
+        /* Label styles */
+        .input-group__label {
+            padding: 0 0.5em;
+            margin-bottom: 0.5em;
+            text-transform: uppercase;
+            font-size: 0.875em;
+            letter-spacing: 0.1em;
+            color: rgba(255, 220, 255, 0.6);
+            cursor: pointer;
+        }
+
+        /* Input field styles */
+        .input-group__input {
+            color: #fff;
+            font-size: 1.125rem;
+            line-height: 1;
+            border-style: none;
+            outline: none;
+            height: calc(1em + 1.6em + 0.5em);
+            width: 100%;
+            padding: 0.8em 1em;
+            border: 0.25em solid transparent;
+            background-image: linear-gradient(#000, #000),
+                linear-gradient(120deg, #f09 0%, #0ff 50%, #9f0 100%);
+            background-origin: border-box;
+            background-clip: padding-box, border-box;
+            border-radius: 1.8em;
+            background-size: 200% 100%;
+            transition: background-position 0.8s ease-out;
+        }
+
+        .input-group__input:hover {
+            background-position: 100% 0;
+        }
+
+        .input-group__input:focus {
+            outline: 2px dashed #ad2b89;
+            outline-offset: 0.5em;
+        }
+
+        /* Login Button */
+        .btn-border-reveal {
+            background-color: #9b59b6;
+            color: white;
+            border: 2px solid #9b59b6;
+            position: relative;
+            overflow: hidden;
+            font-size: 22px;
+            padding: 12px 25px;
+            border-radius: 10px;
+            cursor: pointer;
+            z-index: 0;
+        }
+
+        .btn-border-reveal::after {
+            content: "";
+            position: absolute;
+            width: 0;
+            height: 100%;
+            top: 0;
+            left: 0;
+            background-color: #6d3996;
+            transition: width 0.3s ease;
+            z-index: -1;
+        }
+
+        .btn-border-reveal:hover::after {
+            width: 100%;
+        }
+
+        .btn-border-reveal:hover {
+            color: white;
+            z-index: 1;
+        }
+    </style>
+</head>
+<body>
+    <!-- Back Button -->
+    <button class="back-button" onclick="window.location.href='/'"></button>
+
+    <!-- Container for input fields and login button -->
+    <div class="input-container">
+        <!-- Username input box -->
+        <div class="username-box">
+            <input class="input-group__input" type="text" id="username" placeholder="Enter your username">
+        </div>
+
+        <!-- Password input box -->
+        <div class="password-box">
+            <input class="input-group__input" type="password" id="password" placeholder="Enter your password">
+        </div>
+
+        <!-- Error Message Area -->
+        <div id="error-message" style="color: #ff6b6b; margin-top: 10px; height: 1em;"></div>
+
+        <!-- Login Button -->
+        <button class="btn btn-border-reveal" id="login-button">Login</button>
+    </div>
+
+    <script>
+        // Handle Login Button Click
+        const loginButton = document.getElementById('login-button');
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+        const errorMessageDiv = document.getElementById('error-message');
+
+        // Clear error message when user starts typing
+        usernameInput.addEventListener('input', () => errorMessageDiv.textContent = '');
+        passwordInput.addEventListener('input', () => errorMessageDiv.textContent = '');
+
+        if (loginButton) {
+            loginButton.addEventListener('click', async () => {
+                // Clear previous error messages
+                errorMessageDiv.textContent = '';
+
+                const username = usernameInput.value.trim();
+                const password = passwordInput.value.trim();
+
+                if (username && password) {
+                    try {
+                        const response = await fetch('/api/login', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({ username, password }),
+                        });
+
+                        if (response.ok) {
+                            // Login successful, redirect to home page
+                            window.location.href = '/';
+                        } else {
+                            // Handle errors (e.g., show message to user)
+                            const errorData = await response.json();
+                            errorMessageDiv.textContent = errorData.detail || 'Unknown error occurred during login.';
+                            // Clear password field after failed attempt
+                            passwordInput.value = '';
+                        }
+                    } catch (error) {
+                        console.error('Login request failed:', error);
+                        errorMessageDiv.textContent = 'An error occurred during login. Please try again.';
+                    }
+                } else {
+                    errorMessageDiv.textContent = 'Please enter both username and password.';
+                }
+            });
+        }
+    </script>
+</body>
+</html>
