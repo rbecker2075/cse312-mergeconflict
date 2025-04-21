@@ -2,9 +2,120 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Title</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home</title>
+    <style>
+        body {
+            /* Basic styling reset */
+            margin: 0;
+            padding: 0;
+            /* Background image settings */
+            background-image: url('/static/imgs/mergeconflictbasebackground1.jpg'); /* Path to background image */
+            background-size: 100% 100%; /* Stretch image to fill viewport */
+            background-repeat: no-repeat; /* Prevent tiling */
+            background-position: center center; /* Center image */
+            min-height: 100vh; /* Ensure body fills viewport height */
+            /* Flexbox for centering content */
+            display: flex;
+            flex-direction: column; /* Stack elements vertically */
+            align-items: center; /* Center horizontally */
+            justify-content: center; /* Center vertically */
+            /* Default text color for visibility */
+            color: white;
+        }
+        .header {
+            display: flex;
+            flex-direction: column; /* Stack header items vertically */
+            align-items: center; /* Center header items */
+            margin-bottom: 30px;
+            text-align: center; /* Center text within header */
+        }
+        .auth-buttons {
+            display: flex;
+            gap: 50px; /* Space between image buttons */
+            margin-top: 275px; /* Position buttons down from the top */
+            margin-left: 95px; /* Adjust horizontal position */
+        }
+        .button-img { /* Style for image-based buttons (Login/Register/Logout) */
+            width: 150px; /* Button width */
+            height: auto; /* Maintain aspect ratio */
+            cursor: pointer; /* Indicate clickable element */
+        }
+        /* Style for standard text buttons (if any are added later) */
+        .button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 8px 15px;
+            border: none;
+            border-radius: 4px;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .welcome {
+            font-size: 18px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .content {
+            text-align: center;
+        }
+        /* Style for the top-right user information box */
+        .user-info {
+            position: absolute; /* Position relative to viewport */
+            top: 20px;
+            right: 20px;
+            display: flex;
+            align-items: center; /* Align items vertically */
+            gap: 10px; /* Space between text and logout button */
+            background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent background for readability */
+            padding: 10px;
+            border-radius: 5px; /* Rounded corners */
+        }
+
+        .user-info span {
+            color: white; /* Ensure text is white */
+        }
+
+    </style>
 </head>
 <body>
+    <!-- Display user info and logout button if logged in -->
+    {% if username %}
+    <div class="user-info">
+        <span>Hello, {{ username }}!</span>
+        <a href="/logout">
+            <img src="/static/imgs/logoutbuttonmergeconflict3.png" alt="Logout" class="button-img">
+        </a>
+    </div>
+    {% endif %}
 
+    <div class="header">
+        <!-- The main title is part of the background image -->
+        <!-- <h1>Welcome to our App</h1> -->
+        <div class="auth-buttons">
+            <!-- Display Login/Register buttons if not logged in -->
+            {% if not username %}
+            <a href="/login">
+                <img src="/static/imgs/loginbuttonmergeconflict1.png" alt="Login" class="button-img">
+            </a>
+            <a href="/register">
+                <img src="/static/imgs/registerbuttonmergeconflict1.png" alt="Register" class="button-img">
+            </a>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="content">
+        <!-- Display welcome message if logged in -->
+        {% if username %}
+        <p class="welcome">You are logged in as <strong>{{ username }}</strong>.</p>
+        <!-- Placeholder for additional logged-in content -->
+        {% else %}
+        <!-- Content for logged-out users (if any) goes here -->
+        <!-- The prompt to login/register is handled by the buttons above -->
+        {% endif %}
+
+
+    </div>
 </body>
 </html>
