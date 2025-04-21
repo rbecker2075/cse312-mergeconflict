@@ -145,22 +145,56 @@
             <input class="input-group__input" type="password" id="password2" placeholder="Enter your password again">
         </div>
 
-        <!-- Login Button -->
-        <button class="btn btn-border-reveal" id="login-button">Login</button>
+        <!-- Register Button -->
+        <button class="btn btn-border-reveal" id="register-button">Register</button>
     </div>
 
     <script>
-        // Handle Login Button Click
-        const loginButton = document.getElementById('login-button');
-        if (loginButton) {
-            loginButton.addEventListener('click', () => {
-                const username = document.getElementById('username').value.trim();
-                const password = document.getElementById('password').value.trim();
+        // Handle Register Button Click
+        const registerButton = document.getElementById('register-button');
+        if (registerButton) {
+            registerButton.addEventListener('click', async () => {
+                const usernameInput = document.getElementById('username');
+                const passwordInput = document.getElementById('password');
+                const password2Input = document.getElementById('password2');
 
-                if (username && password) {
-                    console.log(`Logging in with Username: ${username}, Password: ${password}`);
-                } else {
-                    alert('Please enter both username and password.');
+                const username = usernameInput.value.trim();
+                const password = passwordInput.value.trim();
+                const password2 = password2Input.value.trim();
+
+                if (!username || !password || !password2) {
+                    alert('Please fill in all fields.');
+                    return;
+                }
+
+                if (password !== password2) {
+                    alert('Passwords do not match.');
+                    passwordInput.value = '';
+                    password2Input.value = '';
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/api/register', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ username, password }),
+                    });
+
+                    if (response.status === 201) {
+                        alert('Registration successful! Please log in.');
+                        window.location.href = '/login';
+                    } else {
+                        const errorData = await response.json();
+                        alert(`Registration failed: ${errorData.detail || 'Unknown error'}`);
+                        passwordInput.value = '';
+                        password2Input.value = '';
+                    }
+                } catch (error) {
+                    console.error('Registration request failed:', error);
+                    alert('An error occurred during registration. Please try again.');
                 }
             });
         }

@@ -150,12 +150,36 @@
         // Handle Login Button Click
         const loginButton = document.getElementById('login-button');
         if (loginButton) {
-            loginButton.addEventListener('click', () => {
-                const username = document.getElementById('username').value.trim();
-                const password = document.getElementById('password').value.trim();
+            loginButton.addEventListener('click', async () => {
+                const usernameInput = document.getElementById('username');
+                const passwordInput = document.getElementById('password');
+                const username = usernameInput.value.trim();
+                const password = passwordInput.value.trim();
 
                 if (username && password) {
-                    console.log(`Logging in with Username: ${username}, Password: ${password}`);
+                    try {
+                        const response = await fetch('/api/login', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({ username, password }),
+                        });
+
+                        if (response.ok) {
+                            // Login successful, redirect to home page
+                            window.location.href = '/';
+                        } else {
+                            // Handle errors (e.g., show message to user)
+                            const errorData = await response.json();
+                            alert(`Login failed: ${errorData.detail || 'Unknown error'}`);
+                            // Clear password field after failed attempt
+                            passwordInput.value = '';
+                        }
+                    } catch (error) {
+                        console.error('Login request failed:', error);
+                        alert('An error occurred during login. Please try again.');
+                    }
                 } else {
                     alert('Please enter both username and password.');
                 }

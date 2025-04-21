@@ -134,53 +134,125 @@
 </head>
 <body>
     <div class="buttons" id="auth-buttons">
-        <!-- Login/Register buttons will be dynamically added here -->
+        <!-- Login/Register buttons OR Welcome msg/Logout button will be dynamically added here -->
     </div>
 
-    <!-- Container for input and button -->
-    <div class="input-container">
-        <div class="username-box">
-
-            <input class="input-group__input" type="text" id="username" placeholder="Enter your username">
-        </div>
-
-        <!-- Start Game button centered below the username box -->
-        <button class="btn btn-border-reveal" id="play-button">Start Game</button>
-    </div>
+    <!-- Removed input-container div -->
 
     <script>
         async function checkAuthStatus() {
+            const authButtons = document.getElementById('auth-buttons');
+            authButtons.innerHTML = ''; // Clear previous buttons/text
+
             try {
                 const response = await fetch('/auth/status');
                 const data = await response.json();
-                const authButtons = document.getElementById('auth-buttons');
 
-                if (!data.logged_in) {
-                    authButtons.innerHTML = `
-                        <a href="/login">
-                            <img src="imgs/loginbutton.png" alt="Login" class="button-image">
-                        </a>
-                        <a href="/register">
-                            <img src="imgs/registerbutton.png" alt="Register" class="button-image">
-                        </a>
-                    `;
+                if (data.logged_in) {
+                    // User is logged in
+                    const welcomeMessage = document.createElement('span');
+                    welcomeMessage.textContent = `Welcome, ${data.username}!`;
+                    welcomeMessage.style.fontSize = '1.2em'; // Optional: Style the welcome message
+                    welcomeMessage.style.marginBottom = '10px'; // Add some space below the message
+                    authButtons.appendChild(welcomeMessage);
+
+                    const logoutLink = document.createElement('a');
+                    logoutLink.href = '/logout';
+                    const logoutButtonImage = document.createElement('img');
+                    logoutButtonImage.src = 'imgs/newlogoutbutton1.png'; // Use the new logout button image
+                    logoutButtonImage.alt = 'Logout';
+                    logoutButtonImage.classList.add('button-image');
+                    logoutLink.appendChild(logoutButtonImage);
+                    authButtons.appendChild(logoutLink);
+
+                    // Create a new container for the centered Start Game button
+                    const gameButtonContainer = document.createElement('div');
+                    gameButtonContainer.style.position = 'absolute';
+                    gameButtonContainer.style.top = '50%';
+                    gameButtonContainer.style.left = '50%';
+                    gameButtonContainer.style.transform = 'translate(-50%, -50%)';
+                    gameButtonContainer.style.textAlign = 'center'; // Center button within the container
+
+                    // Create the Start Game button
+                    const startGameButton = document.createElement('button');
+                    startGameButton.textContent = 'Start Game';
+                    startGameButton.classList.add('btn', 'btn-border-reveal'); // Reuse existing button style
+                    // Removed margin-top as centering is handled by the container
+                    startGameButton.addEventListener('click', () => {
+                        window.location.href = '/play';
+                    });
+
+                    // Add button to the centered container
+                    gameButtonContainer.appendChild(startGameButton);
+
+                    // Add the centered container to the body
+                    document.body.appendChild(gameButtonContainer);
+
+                    // Ensure the centered auth button container is removed if it exists
+                    const existingAuthContainer = document.querySelector('div#auth-button-container');
+                    if (existingAuthContainer) {
+                        existingAuthContainer.remove();
+                    }
+
+                } else {
+                    // User is not logged in
+                    authButtons.innerHTML = ''; // Ensure top-right container is cleared
+
+                    // Remove any existing centered game button container if present
+                    const existingGameContainer = document.querySelector('div#game-button-container');
+                    if (existingGameContainer) {
+                        existingGameContainer.remove();
+                    }
+
+                    // Remove any existing centered auth button container before creating a new one
+                    let authButtonContainer = document.querySelector('div#auth-button-container');
+                    if (authButtonContainer) {
+                        authButtonContainer.remove();
+                    }
+
+                    // Create a new centered container for Login/Register buttons
+                    authButtonContainer = document.createElement('div');
+                    authButtonContainer.id = 'auth-button-container'; // Add an ID for easier selection
+                    authButtonContainer.style.position = 'absolute';
+                    authButtonContainer.style.top = '50%';
+                    authButtonContainer.style.left = '50%';
+                    authButtonContainer.style.transform = 'translate(-50%, -50%)';
+                    authButtonContainer.style.display = 'flex'; // Arrange buttons horizontally
+                    authButtonContainer.style.gap = '20px'; // Add space between buttons
+
+                    // Create Login Button
+                    const loginLink = document.createElement('a');
+                    loginLink.href = '/login';
+                    const loginButtonImage = document.createElement('img');
+                    loginButtonImage.src = 'imgs/loginbutton.png';
+                    loginButtonImage.alt = 'Login';
+                    loginButtonImage.classList.add('button-image');
+                    loginLink.appendChild(loginButtonImage);
+
+                    // Create Register Button
+                    const registerLink = document.createElement('a');
+                    registerLink.href = '/register';
+                    const registerButtonImage = document.createElement('img');
+                    registerButtonImage.src = 'imgs/registerbutton.png';
+                    registerButtonImage.alt = 'Register';
+                    registerButtonImage.classList.add('button-image');
+                    registerLink.appendChild(registerButtonImage);
+
+                    // Add buttons to the centered container
+                    authButtonContainer.appendChild(loginLink);
+                    authButtonContainer.appendChild(registerLink);
+
+                    // Add the centered container to the body
+                    document.body.appendChild(authButtonContainer);
                 }
             } catch (error) {
                 console.error('Error checking auth status:', error);
+                // Optionally display an error message to the user in the authButtons div
+                authButtons.textContent = 'Error loading user status.';
             }
         }
 
-        const playButton = document.getElementById('play-button');
-        if (playButton) {
-            playButton.addEventListener('click', () => {
-                const username = document.getElementById('username').value.trim();
-                if (username) {
-                    window.location.href = `/play?username=${encodeURIComponent(username)}`;
-                } else {
-                    alert('Please enter a username to continue.');
-                }
-            });
-        }
+        // Removed the playButton logic as the button is removed
 
         window.onload = checkAuthStatus;
     </script>
