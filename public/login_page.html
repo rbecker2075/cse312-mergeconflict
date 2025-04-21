@@ -142,6 +142,9 @@
             <input class="input-group__input" type="password" id="password" placeholder="Enter your password">
         </div>
 
+        <!-- Error Message Area -->
+        <div id="error-message" style="color: #ff6b6b; margin-top: 10px; height: 1em;"></div>
+
         <!-- Login Button -->
         <button class="btn btn-border-reveal" id="login-button">Login</button>
     </div>
@@ -149,10 +152,19 @@
     <script>
         // Handle Login Button Click
         const loginButton = document.getElementById('login-button');
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+        const errorMessageDiv = document.getElementById('error-message');
+
+        // Clear error message when user starts typing
+        usernameInput.addEventListener('input', () => errorMessageDiv.textContent = '');
+        passwordInput.addEventListener('input', () => errorMessageDiv.textContent = '');
+
         if (loginButton) {
             loginButton.addEventListener('click', async () => {
-                const usernameInput = document.getElementById('username');
-                const passwordInput = document.getElementById('password');
+                // Clear previous error messages
+                errorMessageDiv.textContent = '';
+
                 const username = usernameInput.value.trim();
                 const password = passwordInput.value.trim();
 
@@ -172,16 +184,16 @@
                         } else {
                             // Handle errors (e.g., show message to user)
                             const errorData = await response.json();
-                            alert(`Login failed: ${errorData.detail || 'Unknown error'}`);
+                            errorMessageDiv.textContent = errorData.detail || 'Unknown error occurred during login.';
                             // Clear password field after failed attempt
                             passwordInput.value = '';
                         }
                     } catch (error) {
                         console.error('Login request failed:', error);
-                        alert('An error occurred during login. Please try again.');
+                        errorMessageDiv.textContent = 'An error occurred during login. Please try again.';
                     }
                 } else {
-                    alert('Please enter both username and password.');
+                    errorMessageDiv.textContent = 'Please enter both username and password.';
                 }
             });
         }

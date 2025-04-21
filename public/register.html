@@ -47,7 +47,6 @@
             flex-direction: column;
             position: relative;
             margin-bottom: 35px; /* Increased gap */
-            margin-left: -25%;
         }
 
         /* Password boxes */
@@ -58,7 +57,6 @@
             flex-direction: column;
             position: relative;
             margin-bottom: 15px;
-            margin-left: -25%;
         }
 
         /* Input field styles */
@@ -145,6 +143,9 @@
             <input class="input-group__input" type="password" id="password2" placeholder="Enter your password again">
         </div>
 
+        <!-- Error Message Area -->
+        <div id="error-message" style="color: #ff6b6b; margin-top: 10px; height: auto; min-height: 1.2em; width: 15em; max-width: 90%; text-align: center;"></div>
+
         <!-- Register Button -->
         <button class="btn btn-border-reveal" id="register-button">Register</button>
     </div>
@@ -152,23 +153,32 @@
     <script>
         // Handle Register Button Click
         const registerButton = document.getElementById('register-button');
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+        const password2Input = document.getElementById('password2');
+        const errorMessageDiv = document.getElementById('error-message');
+
+        // Clear error message when user starts typing
+        usernameInput.addEventListener('input', () => errorMessageDiv.textContent = '');
+        passwordInput.addEventListener('input', () => errorMessageDiv.textContent = '');
+        password2Input.addEventListener('input', () => errorMessageDiv.textContent = '');
+
         if (registerButton) {
             registerButton.addEventListener('click', async () => {
-                const usernameInput = document.getElementById('username');
-                const passwordInput = document.getElementById('password');
-                const password2Input = document.getElementById('password2');
+                // Clear previous error messages
+                errorMessageDiv.textContent = '';
 
                 const username = usernameInput.value.trim();
                 const password = passwordInput.value.trim();
                 const password2 = password2Input.value.trim();
 
                 if (!username || !password || !password2) {
-                    alert('Please fill in all fields.');
+                    errorMessageDiv.textContent = 'Please fill in all fields.';
                     return;
                 }
 
                 if (password !== password2) {
-                    alert('Passwords do not match.');
+                    errorMessageDiv.textContent = 'Passwords do not match.';
                     passwordInput.value = '';
                     password2Input.value = '';
                     return;
@@ -184,17 +194,23 @@
                     });
 
                     if (response.status === 201) {
-                        alert('Registration successful! Please log in.');
-                        window.location.href = '/login';
+                        // Registration successful - redirect handled by browser
+                        // Show a temporary success message before redirecting
+                        errorMessageDiv.style.color = '#90ee90'; // Light green for success
+                        errorMessageDiv.textContent = 'Registration successful! Redirecting to login...';
+                        // Redirect after a short delay
+                        setTimeout(() => {
+                            window.location.href = '/login';
+                        }, 1500); // 1.5 seconds delay
                     } else {
                         const errorData = await response.json();
-                        alert(`Registration failed: ${errorData.detail || 'Unknown error'}`);
+                        errorMessageDiv.textContent = errorData.detail || 'Unknown error occurred during registration.';
                         passwordInput.value = '';
                         password2Input.value = '';
                     }
                 } catch (error) {
                     console.error('Registration request failed:', error);
-                    alert('An error occurred during registration. Please try again.');
+                    errorMessageDiv.textContent = 'An error occurred during registration. Please try again.';
                 }
             });
         }
