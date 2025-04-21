@@ -1,5 +1,5 @@
 import uvicorn # Added for running the app if needed
-from fastapi import FastAPI, Request, Depends, HTTPException, status, Response, Cookie, Body, Websocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, Depends, HTTPException, status, Response, Cookie, Body
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse # Added JSONResponse
 from fastapi.staticfiles import StaticFiles
 from database import users_collection, sessions_collection # Import from database.py
@@ -10,25 +10,6 @@ from auth import get_password_hash, verify_password, create_access_token, hash_t
 from pydantic import BaseModel # Added for request bodies
 
 app = FastAPI(title='Merge Conflict Game', description='Authentication and Game API', version='1.0')
-
-# Mount static directory
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-# Serve HTML page at echo
-@app.get("/echo")
-async def serve_homepage():
-    return FileResponse("static/echo.html")
-
-# WebSocket Echo Endpoint
-@app.websocket("/ws/echo")
-async def websocket_echo(websocket: WebSocket):
-    await websocket.accept()
-    try:
-        while True:
-            data = await websocket.receive_text()
-            await websocket.send_text(f"Echo: {data}")
-    except WebSocketDisconnect:
-        print("Client disconnected")
 
 # Configure static files
 # Mount 'public/imgs' directory to serve images under '/imgs' path
@@ -184,3 +165,4 @@ async def logout(response: Response = Response(), session_token: Optional[str] =
 # --- Add main execution block (optional, for running directly) ---
 # if __name__ == "__main__":
 #     uvicorn.run(app, host="0.0.0.0", port=8000)
+
