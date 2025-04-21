@@ -8,7 +8,7 @@ import os
 import string # Required for checking special characters in passwords
 from auth import get_password_hash, verify_password, create_access_token, hash_token, get_current_user
 from pydantic import BaseModel # Added for request bodies
-
+import datetime
 app = FastAPI(title='Merge Conflict Game', description='Authentication and Game API', version='1.0')
 
 # Configure static files
@@ -160,6 +160,41 @@ async def logout(response: Response = Response(), session_token: Optional[str] =
 
     return redirect_response # Return the redirect response
 
+
+
+
+def request_log(request : Request, response : Response ):
+   time = datetime.datetime.now()
+   content = time.strftime("%m%d%Y, %H:%M:%S") + "\n client" + str(request.client.host)+"\n method" + str(request.method) + "\n url path" + str(request.url.path) + '\n response code' + str(response.status_code)
+   with open("./public/logging/request_logs.txt","a") as f:
+        f.write(content)
+
+def fullLogging(request : Request, response : Response ):
+    req = b""
+    reqS = request.method + request.url.path
+    for header in request.headers:
+        reqS = reqS + header +": "+ request.headers[header]# need to take out auth tokens and handle cookies better
+    req = reqS.encode() + b"\n"
+    res = b""
+    with open("./logging/fullreq.txt","ab") as f:
+        f.write(req)
+    with open("./logging/fullres.txt","ab") as f:
+        f.write(res)
+
+#to do docker logging, volume
+def errorLog(error : Exception):
+    strErr = str(error)
+
+# full request and response logging
+@app.middleware("http")
+async def reqresLogging(request: Request, call_next):
+    response = Response()
+    #try:
+    response = await call_next(request)
+    #except Exception as e:
+    #    errorLog(e)#will log errors
+    #    return
+    request_log(request,response)
 # --- Remove duplicate /login route and /hello/{name} ---
 
 # --- Add main execution block (optional, for running directly) ---
