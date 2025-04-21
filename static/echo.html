@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>WebSocket Echo</title>
+</head>
+<body>
+  <h1>WebSocket Echo Test</h1>
+  <input id="msgInput" type="text" placeholder="Type a message..." />
+  <button onclick="sendMessage()">Send</button>
+  <ul id="messages"></ul>
+
+  <script>
+    const ws = new WebSocket(`ws://localhost:8080/ws/echo`);
+
+    ws.onmessage = (event) => {
+      const msgList = document.getElementById("messages");
+      const li = document.createElement("li");
+      li.textContent = event.data;
+      msgList.appendChild(li);
+    };
+
+    function sendMessage() {
+      const input = document.getElementById("msgInput");
+      if (input.value.trim() !== "") {
+        ws.send(input.value);
+        input.value = "";
+      }
+    }
+  </script>
+</body>
+</html>
