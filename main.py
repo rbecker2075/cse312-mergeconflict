@@ -13,7 +13,7 @@ app = FastAPI(title='Merge Conflict Game', description='Authentication and Game 
 
 # Configure static files
 # Mount 'public/imgs' directory to serve images under '/imgs' path
-app.mount("/imgs", StaticFiles(directory="public/imgs"), name="imgs")
+app.mount("/imgs", StaticFiles(directory="public/Imgs"), name="imgs")
 # Removed old '/static' mount and Jinja2Templates setup
 
 # --- Pydantic Models for Request Bodies ---
