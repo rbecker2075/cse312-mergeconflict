@@ -1,5 +1,6 @@
+
 from fastapi import FastAPI, Request, Form, Depends, HTTPException, status, Response, Cookie
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from database import users_collection, sessions_collection # Import from database.py
@@ -7,14 +8,14 @@ from typing import Optional
 import os
 import string # Required for checking special characters in passwords
 from auth import get_password_hash, verify_password, create_access_token, hash_token, get_current_user
-
+import uuid
+from starlette.staticfiles import StaticFiles
 # Import for CSRF token generation
 import secrets
 
 
-# Comments for removed features (CSRF middleware, Rate Limiting) have been deleted.
+app = FastAPI(title='test', description='testing desc', version='1.0')
 
-app = FastAPI()
 
 # Configure static files and templates
 app.mount("/static", StaticFiles(directory="FrontEnd/static"), name="static")
@@ -279,13 +280,11 @@ async def logout(response: Response, session_token: Optional[str] = Cookie(None)
     return RedirectResponse(url="/")
 
 
+@app.get('/login')  # Ensure this route is correctly defined with a leading slash
+async def login(response: Response, request: Request):
+    return FileResponse(INDEX_FILE_PATH)
+
 @app.get("/hello/{name}")
 async def say_hello(name: str):
-    # Example endpoint.
     return {"message": f"Hello {name}"}
 
-
-# Commented out example data endpoint
-# @app.get("/data")
-# def get_data():
-#     return {"collections": db.list_collection_names()}

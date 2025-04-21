@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home Page</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            height: 100vh;
+            margin: 0;
+            background: url('imgs/Home_Background.jpg') no-repeat center center fixed;
+            background-size: cover;
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+
+        .buttons {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: transparent;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+        }
+        .button-image {
+            width: 150px;
+            height: auto;
+            margin: 5px 0;
+            cursor: pointer;
+        }
+
+        @keyframes background-move {
+            0% { background-position: 0 0, 0 0; }
+            100% {
+                background-position: 100vw 0, 0 0;
+            }
+        }
+
+        /* Container for input and button */
+        .input-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .username-box {
+            width: 100%;
+            max-width: 15em; /* Set max width */
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            margin-left: -10%; /* Move username box 10% to the left */
+        }
+
+        .input-group__label {
+            padding: 0 0.5em;
+            margin-bottom: 0.5em;
+            text-transform: uppercase;
+            font-size: 0.875em;
+            letter-spacing: 0.1em;
+            color: #ccd;
+            color: rgba(255, 220, 255, 0.6);
+            cursor: pointer;
+        }
+
+        .input-group__input {
+            color: #fff;
+            font-size: 1.125rem;
+            line-height: 1;
+            border-style: none;
+            outline: none;
+            height: calc(1em + 1.6em + 0.5em);
+            width: 100%;
+            padding: 0.8em 1em;
+            border: 0.25em solid transparent;
+            background-image: linear-gradient(#000, #000),
+                linear-gradient(120deg, #f09 0%, #0ff 50%, #9f0 100%);
+            background-origin: border-box;
+            background-clip: padding-box, border-box;
+            border-radius: 1.8em;
+            background-size: 200% 100%;
+            transition: background-position 0.8s ease-out;
+        }
+
+        .input-group__input:hover {
+            background-position: 100% 0;
+        }
+
+        .input-group__input:focus {
+            outline: 2px dashed #ad2b89;
+            outline-offset: 0.5em;
+        }
+
+        .btn-border-reveal {
+            background-color: #9b59b6;
+            color: white;
+            border: 2px solid #9b59b6;
+            position: relative;
+            overflow: hidden;
+            font-size: 22px;
+            padding: 12px 25px;
+            border-radius: 10px;
+            cursor: pointer;
+            z-index: 0;
+            margin-top: 15px;
+        }
+
+        .btn-border-reveal::after {
+            content: "";
+            position: absolute;
+            width: 0;
+            height: 100%;
+            top: 0;
+            left: 0;
+            background-color: #6d3996;
+            transition: width 0.3s ease;
+            z-index: -1;
+        }
+
+        .btn-border-reveal:hover::after {
+            width: 100%;
+        }
+
+        .btn-border-reveal:hover {
+            color: white;
+            z-index: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="buttons" id="auth-buttons">
+        <!-- Login/Register buttons will be dynamically added here -->
+    </div>
+
+    <!-- Container for input and button -->
+    <div class="input-container">
+        <div class="username-box">
+
+            <input class="input-group__input" type="text" id="username" placeholder="Enter your username">
+        </div>
+
+        <!-- Start Game button centered below the username box -->
+        <button class="btn btn-border-reveal" id="play-button">Start Game</button>
+    </div>
+
+    <script>
+        async function checkAuthStatus() {
+            try {
+                const response = await fetch('/auth/status');
+                const data = await response.json();
+                const authButtons = document.getElementById('auth-buttons');
+
+                if (!data.logged_in) {
+                    authButtons.innerHTML = `
+                        <a href="/login">
+                            <img src="imgs/loginbutton.png" alt="Login" class="button-image">
+                        </a>
+                        <a href="/register">
+                            <img src="imgs/registerbutton.png" alt="Register" class="button-image">
+                        </a>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error checking auth status:', error);
+            }
+        }
+
+        const playButton = document.getElementById('play-button');
+        if (playButton) {
+            playButton.addEventListener('click', () => {
+                const username = document.getElementById('username').value.trim();
+                if (username) {
+                    window.location.href = `/play?username=${encodeURIComponent(username)}`;
+                } else {
+                    alert('Please enter a username to continue.');
+                }
+            });
+        }
+
+        window.onload = checkAuthStatus;
+    </script>
+</body>
+</html>
