@@ -1,27 +1,26 @@
-import uvicorn # Added for running the app if needed
-from fastapi import FastAPI, Request, Depends, HTTPException, status, Response, Cookie, Body
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse # Added JSONResponse
+import uvicorn
+import asyncio
+import json
+from fastapi import FastAPI, Request, Depends, HTTPException, status, Response, Cookie, Body, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from database import users_collection, sessions_collection # Import from database.py
+from database import users_collection, sessions_collection
 from typing import Optional
 import os
-import string # Required for checking special characters in passwords
+import string
 from auth import get_password_hash, verify_password, create_access_token, hash_token, get_current_user
-from pydantic import BaseModel # Added for request bodies
+from pydantic import BaseModel
 
 app = FastAPI(title='Merge Conflict Game', description='Authentication and Game API', version='1.0')
 
-# Configure static files
 # Mount 'public/imgs' directory to serve images under '/imgs' path
 app.mount("/imgs", StaticFiles(directory="public/Imgs"), name="imgs")
 
-# ---------------- NEW CODE FOR GAME TEST -------------------------
-# Mount game static files
+# Mount 'game/static' directory to serve game logic 
 app.mount("/game/static", StaticFiles(directory="game/static"), name="game-static")
 
 templates = Jinja2Templates(directory="game/templates")
-# ---------------- NEW CODE FOR GAME TEST -------------------------
 
 # --- Pydantic Models for Request Bodies ---
 class UserCredentials(BaseModel):
@@ -41,7 +40,6 @@ def check_password_complexity(password: str) -> bool:
     met_criteria = sum(checks.values())
     return met_criteria >= 3
 
-# --- Removed CSRF Configuration and Validation ---
 
 # --- Routes for Serving Frontend Pages ---
 
