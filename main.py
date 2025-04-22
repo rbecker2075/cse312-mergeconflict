@@ -222,26 +222,30 @@ class Player:
 
 def winner(player1, player2):#returns dict with winner and loser
     if player1.size > player2.size:
-        del player_dict[player2.username] #player 2 loses and is deleted from player_dict
         player1.size += player2.size #player 1 gets player 2 size
         speed_update(player1) #updates player 1 speed
+        player_dict[player1.username] = player1
+        del player_dict[player2.username]  # player 2 loses and is deleted from player_dict
         return {"loser":player2,"winner":player1} #return player2 to broadcast defeat?
     elif player1.size < player2.size:
-        del player_dict[player1.username]
         player2.size += player1.size  # player 1 gets player 2 size
         speed_update(player2)
+        player_dict[player2.username] = player2
+        del player_dict[player1.username]
         return {"loser":player1, "winner":player2}
     else:
         p = random.choice([player1, player2])
         if p.username == player1.username:#player 1 is decided winner
-            del player_dict[player2.username] #del player 2
             player1.size += player2.size #increase player 1 by player2 size
             speed_update(player1) #update speed
+            player_dict[player1.username] = player1
+            del player_dict[player2.username]  # del player 2
             return {"loser":player2,"winner":player1} #return player2 to broadcast defeat?
         else:#player 2 is decided winner
-            del player_dict[player1.username]
             player2.size += player1.size
             speed_update(player2)
+            player_dict[player2.username] = player2
+            del player_dict[player1.username]
             return {"loser":player1, "winner":player2}
 
 def add_buff_debuff(player : Player, buff : string):
