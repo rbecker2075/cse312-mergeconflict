@@ -8,7 +8,6 @@ services:
       - "8080:8000"
     environment:
       MONGO_URL: mongodb://mongo:27017
-      SECRET_KEY: ${SECRET_KEY:-fallback_dev_key_only_set_in_env}
     depends_on:
       - mongo
 

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Phaser Game</title>
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.js"></script>
+  <style>
+    /* Ensure the body and html fill the screen and do not have extra margins */
+    html, body {
+      height: 100%;
+      margin: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background-color: #f0f0f0;
+    }
+
+    /* Center the game container and set its dimensions */
+    .game-container {
+      width: 75vw;
+      height: 75vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    /* Make sure the canvas fills the container */
+    canvas {
+      width: 100% !important;
+      height: 100% !important;
+    }
+  </style>
+</head>
+<body>
+  <!-- Game Container -->
+  <div class="game-container">
+    <!-- Phaser will automatically create a canvas inside this div -->
+  </div>
+
+  <script src="/game/static/game.js"></script>
+</body>
+</html>
