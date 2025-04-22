@@ -202,7 +202,6 @@ def errorLog(error : string, tb : string):
 # full request and response logging
 @app.middleware("http")
 async def reqresLogging(request: Request, call_next):
-    response = Response()
     #try:
     response = await call_next(request)
     #except Exception as e:
@@ -212,7 +211,7 @@ async def reqresLogging(request: Request, call_next):
     #return
     request_log(request,response)
     #fullLogging(request,response)
-    return
+    return response # Return the actual response now
 # --- Remove duplicate /login route and /hello/{name} ---
 
 # --- Add main execution block (optional, for running directly) ---
