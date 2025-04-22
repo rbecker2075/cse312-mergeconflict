@@ -10,7 +10,10 @@ from typing import Optional
 import os
 import string
 from auth import get_password_hash, verify_password, create_access_token, hash_token, get_current_user
-from pydantic import BaseModel
+from pydantic import BaseModel # Added for request bodies
+import datetime
+import random
+import time
 
 app = FastAPI(title='Merge Conflict Game', description='Authentication and Game API', version='1.0')
 
@@ -169,9 +172,153 @@ async def logout(response: Response = Response(), session_token: Optional[str] =
 
     return redirect_response # Return the redirect response
 
+
+
+
+def request_log(request : Request, response : Response ):
+   tim = datetime.datetime.now()
+   content = tim.strftime("%m%d%Y, %H:%M:%S") + "\n client" + str(request.client.host)+"\n method" + str(request.method) + "\n url path" + str(request.url.path) + '\n response code' + str(response.status_code)
+   with open("./public/logging/request_logs.txt","a") as f:
+        f.write(content)
+
+def fullLogging(request : Request, response : Response ):
+    req = b""
+    reqS = request.method + request.url.path
+    for header in request.headers:
+        reqS = reqS + header +": "+ request.headers[header]# need to take out auth tokens and handle cookies better
+    req = reqS.encode() + b"\n"
+    res = b""
+    with open("./logging/fullreq.txt","ab") as f:
+        f.write(req)
+    with open("./logging/fullres.txt","ab") as f:
+        f.write(res)
+
+#to do docker logging, volume
+def errorLog(error : string, tb : string):
+    content = "error: " + error + "\n" + tb
+    with open("./logging/error_log.txt","b") as f:
+        f.write(content)
+
+# full request and response logging
+@app.middleware("http")
+async def reqresLogging(request: Request, call_next):
+    response = Response()
+    #try:
+    response = await call_next(request)
+    #except Exception as e:
+    # erro = str(e)
+    #tb = traceback.format_exe()
+    #errorLog(e,tb)
+    #return
+    request_log(request,response)
+    #fullLogging(request,response)
+    return
 # --- Remove duplicate /login route and /hello/{name} ---
 
 # --- Add main execution block (optional, for running directly) ---
 # if __name__ == "__main__":
 #     uvicorn.run(app, host="0.0.0.0", port=8000)
 
+player_dict = {}# I assume we will update this when we get/lose players #assuming {username:player}
+class Player:
+    def __init__(self, username):
+        self.username = username #these are stand in numbers if you want to change them
+        position_x : int #these I assume will be randomly generated and set after
+        position_y : int
+        self.size = 20
+        self.speed = 5
+        self.debuffs = {"debuff_speed":False,"debuff_size":False }#assuming maybe 2 debuffs and 2 buffs, increase and decrease size and speed temp
+        self.buffs = {"buff_speed":False,"buff_size":False }
+
+def winner(player1, player2):#returns dict with winner and loser
+    if player1.size > player2.size:
+        player1.size += player2.size #player 1 gets player 2 size
+        speed_update(player1) #updates player 1 speed
+        player_dict[player1.username] = player1
+        del player_dict[player2.username]  # player 2 loses and is deleted from player_dict
+        return {"loser":player2,"winner":player1} #return player2 to broadcast defeat?
+    elif player1.size < player2.size:
+        player2.size += player1.size  # player 1 gets player 2 size
+        speed_update(player2)
+        player_dict[player2.username] = player2
+        del player_dict[player1.username]
+        return {"loser":player1, "winner":player2}
+    else:
+        p = random.choice([player1, player2])
+        if p.username == player1.username:#player 1 is decided winner
+            player1.size += player2.size #increase player 1 by player2 size
+            speed_update(player1) #update speed
+            player_dict[player1.username] = player1
+            del player_dict[player2.username]  # del player 2
+            return {"loser":player2,"winner":player1} #return player2 to broadcast defeat?
+        else:#player 2 is decided winner
+            player2.size += player1.size
+            speed_update(player2)
+            player_dict[player2.username] = player2
+            del player_dict[player1.username]
+            return {"loser":player1, "winner":player2}
+
+def add_buff_debuff(player : Player, buff : string):
+    if buff in player.debuffs:
+        player.debuffs[buff] = True
+        if buff == "debuff_speed":
+            if player.speed > 1:
+                player.speed = player.speed - 1
+        else: #debuff_size
+            if player.size>=25:
+                player.size = player.size - 5
+            else:
+                player.size = 20
+    if buff in player.buffs:
+        player.buffs[buff] = True
+        if buff == "buff_speed":
+            player.speed = player.speed + 1
+        if buff == "buff_size":
+            player.size = player.size + 5
+    player_dict[player.username] = player
+    return player
+
+def remove_buff_debuff(player : Player, buff : string): #maybe should be on a seperate thread to time it, threading.timer(wait, function)
+    if buff in player.debuffs:
+        if buff == "debuff_speed":
+            player.speed = player.speed + 1
+        else:
+            player.size = player.size + 5
+        player.debuffs[buff] = False
+    if buff in player.buffs:
+        player.buffs[buff] = False
+        if buff == "buff_speed":
+            if player.speed > 1:
+                player.speed = player.speed - 1
+        else:
+            if player.size>=25:
+                player.size = player.size - 5
+            else:
+                player.size = 20
+    player_dict[player.username] = player
+    return player
+
+#if we are following agar.io bigger size will mean slower speeds, to be called after eating
+def speed_update(player):
+    if player.size >= 100:#these are all stand-in values for now feel free to change
+        player.speed = 1
+    elif player.size >= 75:
+        player.speed = 2
+    elif player.size >= 50:
+        player.speed = 3
+    elif player.size >= 25:
+        player.speed = 4
+    else:
+        player.speed = 5
+    if player.buffs == "buff_speed": #making sure is consistent with buffs/debuffs #hopefully debuffs/buffs doesn't change within the function
+        player.speed = player.speed + 1
+    if player.debuffs == "debuff_speed":
+        if player.speed > 1:
+            player.speed = player.speed - 1
+    player_dict[player.username] = player
+    return player
+
+def ate_food(player):
+    player.size += 1
+    player = speed_update(player)
+    return player
