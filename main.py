@@ -2,6 +2,7 @@ import uvicorn # Added for running the app if needed
 from fastapi import FastAPI, Request, Depends, HTTPException, status, Response, Cookie, Body
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse # Added JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from database import users_collection, sessions_collection # Import from database.py
 from typing import Optional
 import os
@@ -14,7 +15,13 @@ app = FastAPI(title='Merge Conflict Game', description='Authentication and Game 
 # Configure static files
 # Mount 'public/imgs' directory to serve images under '/imgs' path
 app.mount("/imgs", StaticFiles(directory="public/Imgs"), name="imgs")
-# Removed old '/static' mount and Jinja2Templates setup
+
+# ---------------- NEW CODE FOR GAME TEST -------------------------
+# Mount game static files
+app.mount("/game/static", StaticFiles(directory="game/static"), name="game-static")
+
+templates = Jinja2Templates(directory="game/templates")
+# ---------------- NEW CODE FOR GAME TEST -------------------------
 
 # --- Pydantic Models for Request Bodies ---
 class UserCredentials(BaseModel):
@@ -43,6 +50,10 @@ async def serve_home_page():
     # Serve the main index page
     # Check if file exists? Add error handling if needed.
     return FileResponse("public/index.html")
+
+@app.get("/play", response_class=HTMLResponse)
+async def game_page(request: Request):
+    return templates.TemplateResponse("game.html", {"request": request})
 
 @app.get("/login", response_class=FileResponse)
 async def serve_login_page(username: Optional[str] = Depends(get_current_user)):
