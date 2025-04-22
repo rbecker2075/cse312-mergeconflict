@@ -220,29 +220,29 @@ class Player:
         self.debuffs = {"debuff_speed":False,"debuff_size":False }#assuming maybe 2 debuffs and 2 buffs, increase and decrease size and speed temp
         self.buffs = {"buff_speed":False,"buff_size":False }
 
-def winner(player1, player2):#returns loser
+def winner(player1, player2):#returns dict with winner and loser
     if player1.size > player2.size:
         del player_dict[player2.username] #player 2 loses and is deleted from player_dict
         player1.size += player2.size #player 1 gets player 2 size
         speed_update(player1) #updates player 1 speed
-        return player2 #return player2 to broadcast defeat?
+        return {"loser":player2,"winner":player1} #return player2 to broadcast defeat?
     elif player1.size < player2.size:
         del player_dict[player1.username]
         player2.size += player1.size  # player 1 gets player 2 size
         speed_update(player2)
-        return player1
+        return {"loser":player1, "winner":player2}
     else:
         p = random.choice([player1, player2])
         if p.username == player1.username:#player 1 is decided winner
             del player_dict[player2.username] #del player 2
             player1.size += player2.size #increase player 1 by player2 size
             speed_update(player1) #update speed
-            return player2 #return player2 to broadcast defeat?
+            return {"loser":player2,"winner":player1} #return player2 to broadcast defeat?
         else:#player 2 is decided winner
             del player_dict[player1.username]
             player2.size += player1.size
             speed_update(player2)
-            return player1
+            return {"loser":player1, "winner":player2}
 
 def add_buff_debuff(player : Player, buff : string):
     if buff in player.debuffs:
@@ -302,4 +302,9 @@ def speed_update(player):
         if player.speed > 1:
             player.speed = player.speed - 1
     player_dict[player.username] = player
+    return player
+
+def ate_food(player):
+    player.size += 1
+    player = speed_update(player)
     return player
