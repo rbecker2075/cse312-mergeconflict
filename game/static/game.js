@@ -43,7 +43,7 @@ const playerSplitFollowSpeed = 100;
 
 const foodSize = 0.05; // Scale factor for the food sprite
 const foodRadius = 10; // Approximate radius for collision (adjust based on sun.png actual size and scale)
-const growthFactor = 0.005; // How much scale increases per food item
+const growthFactor = 0.0085; // How much scale increases per food item (Increased from 0.005)
 const targetFoodCount = 150; // Target number of food items in the world
 
 // Let foods be a physics group
@@ -152,6 +152,11 @@ function update(time, delta) {
     canSplit = false; // Prevent actions until merge/animation complete
 
     const currentScale = player.scaleX;
+    // --- Calculate scaled values ---
+    const currentWidth = player.width * currentScale; // Player width before split
+    const scaledTweenDistance = currentWidth * 0.5; // Push apart by half the original width
+    const scaledSplitBoost = playerSplitBoost * (1 + currentScale * 0.1); // Slightly increase boost when bigger
+
     const splitScale = Math.sqrt((currentScale * currentScale) / 2);
     const launchDirection = player.body.velocity.length() > 0 ? player.body.velocity.clone().normalize() : new Phaser.Math.Vector2(1, 0);
 
@@ -172,30 +177,30 @@ function update(time, delta) {
     // Set player 1 scale
     player.setScale(splitScale);
 
-    // Short tween for visual separation
-    const tweenDistance = 30; // How far they push apart visually
+    // Short tween for visual separation using scaled distance
+    // const tweenDistance = 30; // How far they push apart visually - OLD Fixed Value
     const tweenDuration = 100; // Milliseconds for the visual split
 
     this.tweens.add({
         targets: player,
-        x: player.x + launchDirection.x * tweenDistance,
-        y: player.y + launchDirection.y * tweenDistance,
+        x: player.x + launchDirection.x * scaledTweenDistance, // Use scaled distance
+        y: player.y + launchDirection.y * scaledTweenDistance, // Use scaled distance
         duration: tweenDuration,
         ease: 'Linear' // or 'Power1'
     });
 
     this.tweens.add({
         targets: player2,
-        x: player2.x - launchDirection.x * tweenDistance,
-        y: player2.y - launchDirection.y * tweenDistance,
+        x: player2.x - launchDirection.x * scaledTweenDistance, // Use scaled distance
+        y: player2.y - launchDirection.y * scaledTweenDistance, // Use scaled distance
         duration: tweenDuration,
         ease: 'Linear',
         onComplete: () => {
             // --- Actions after visual split animation ---
 
-            // Apply the main launch velocity to player 1
-            const launchVelocityX = currentVelX + launchDirection.x * playerSplitBoost;
-            const launchVelocityY = currentVelY + launchDirection.y * playerSplitBoost;
+            // Apply the main launch velocity to player 1 using scaled boost
+            const launchVelocityX = currentVelX + launchDirection.x * scaledSplitBoost; // Use scaled boost
+            const launchVelocityY = currentVelY + launchDirection.y * scaledSplitBoost; // Use scaled boost
             if (player && player.body) { // Check if player still exists
                  player.body.setVelocity(launchVelocityX, launchVelocityY);
             }
