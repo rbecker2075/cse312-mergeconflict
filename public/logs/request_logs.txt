@@ -1,0 +1,84 @@
+04232025, 09:39:18
+ client127.0.0.1
+ methodGET
+ url path/
+ response code20004232025, 09:39:58
+ client127.0.0.1
+ methodGET
+ url path/imgs/Home_Background.jpg
+ response code20004232025, 09:40:00
+ client127.0.0.1
+ methodGET
+ url path/favicon.ico
+ response code40404232025, 09:40:01
+ client127.0.0.1
+ methodGET
+ url path/auth/status
+ response code20004232025, 09:40:06
+ client127.0.0.1
+ methodGET
+ url path/imgs/registerbutton.png
+ response code20004232025, 09:40:18
+ client127.0.0.1
+ methodGET
+ url path/imgs/loginbutton.png
+ response code200time: 04/23/2025, 09:42:29
+ client 127.0.0.1
+ method GET
+ url path /
+ response code 200time: 04/23/2025, 09:42:29
+ client 127.0.0.1
+ method GET
+ url path /auth/status
+ response code 200time: 04/23/2025, 09:42:31
+ client 127.0.0.1
+ method GET
+ url path /register
+ response code 200time: 04/23/2025, 09:42:31
+ client 127.0.0.1
+ method GET
+ url path /imgs/register_background.jpg
+ response code 200time: 04/23/2025, 09:42:31
+ client 127.0.0.1
+ method GET
+ url path /imgs/back.png
+ response code 200time: 04/23/2025, 09:42:35
+ client 127.0.0.1
+ method GET
+ url path /auth/status
+ response code 200time: 04/23/2025, 09:42:36
+ client 127.0.0.1
+ method GET
+ url path /login
+ response code 200time: 04/23/2025, 09:42:36
+ client 127.0.0.1
+ method GET
+ url path /imgs/login_background.jpg
+ response code 200time: 04/23/2025, 09:42:42
+ client 127.0.0.1
+ method GET
+ url path /auth/status
+ response code 200time: 04/23/2025, 09:43:39
+ client 127.0.0.1
+ method GET
+ url path /
+ response code 200
+
+time: 04/23/2025, 09:43:39
+ client 127.0.0.1
+ method GET
+ url path /auth/status
+ response code 200
+
+time: 04/23/2025, 09:43:43
+ client 127.0.0.1
+ method GET
+ url path /auth/status
+ response code 200
+
+time: 04/23/2025, 09:43:45
+ client 127.0.0.1
+ method GET
+ url path /auth/status
+ response code 200
+

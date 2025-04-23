@@ -177,8 +177,8 @@ async def logout(response: Response = Response(), session_token: Optional[str] =
 
 def request_log(request : Request, response : Response ):
    tim = datetime.datetime.now()
-   content = tim.strftime("%m%d%Y, %H:%M:%S") + "\n client" + str(request.client.host)+"\n method" + str(request.method) + "\n url path" + str(request.url.path) + '\n response code' + str(response.status_code)
-   with open("./public/logging/request_logs.txt","a") as f:
+   content ="time: "+ tim.strftime("%m/%d/%Y, %H:%M:%S") + "\n client " + str(request.client.host)+"\n method " + str(request.method) + "\n url path " + str(request.url.path) + '\n response code ' + str(response.status_code) +"\n\n"
+   with open("public/logs/request_logs.txt", "a") as f:
         f.write(content)
 
 def fullLogging(request : Request, response : Response ):
@@ -188,18 +188,18 @@ def fullLogging(request : Request, response : Response ):
         reqS = reqS + header +": "+ request.headers[header]# need to take out auth tokens and handle cookies better
     req = reqS.encode() + b"\n"
     res = b""
-    with open("./logging/fullreq.txt","ab") as f:
+    with open("./logs/fullreq.txt","ab") as f:
         f.write(req)
-    with open("./logging/fullres.txt","ab") as f:
+    with open("./logs/fullres.txt","ab") as f:
         f.write(res)
 
-#to do docker logging, volume
+#to do docker logs, volume
 def errorLog(error : string, tb : string):
     content = "error: " + error + "\n" + tb
-    with open("./logging/error_log.txt","b") as f:
+    with open("./logs/error_log.txt","b") as f:
         f.write(content)
 
-# full request and response logging
+# full request and response logs
 @app.middleware("http")
 async def reqresLogging(request: Request, call_next):
     #try:
@@ -215,8 +215,8 @@ async def reqresLogging(request: Request, call_next):
 # --- Remove duplicate /login route and /hello/{name} ---
 
 # --- Add main execution block (optional, for running directly) ---
-# if __name__ == "__main__":
-#     uvicorn.run(app, host="0.0.0.0", port=8000)
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
 
 player_dict = {}# I assume we will update this when we get/lose players #assuming {username:player}
 class Player:
