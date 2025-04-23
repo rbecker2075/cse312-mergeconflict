@@ -1,0 +1,45 @@
+04232025, 05:07:48
+ client127.0.0.1
+ methodGET
+ url path/
+ response code20004232025, 05:07:48
+ client127.0.0.1
+ methodGET
+ url path/imgs/Home_Background.jpg
+ response code20004232025, 05:07:48
+ client127.0.0.1
+ methodGET
+ url path/auth/status
+ response code20004232025, 05:07:48
+ client127.0.0.1
+ methodGET
+ url path/favicon.ico
+ response code40404232025, 05:07:48
+ client127.0.0.1
+ methodGET
+ url path/imgs/loginbutton.png
+ response code20004232025, 05:07:48
+ client127.0.0.1
+ methodGET
+ url path/imgs/registerbutton.png
+ response code20004232025, 06:09:39
+ client127.0.0.1
+ methodGET
+ url path/
+ response code20004232025, 06:09:39
+ client127.0.0.1
+ methodGET
+ url path/auth/status
+ response code20004232025, 06:09:40
+ client127.0.0.1
+ methodGET
+ url path/login
+ response code20004232025, 06:09:40
+ client127.0.0.1
+ methodGET
+ url path/imgs/login_background.jpg
+ response code20004232025, 06:09:40
+ client127.0.0.1
+ methodGET
+ url path/imgs/back.png
+ response code200

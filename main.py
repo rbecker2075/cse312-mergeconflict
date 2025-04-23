@@ -5,7 +5,7 @@ from fastapi import FastAPI, Request, Depends, HTTPException, status, Response, 
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from database import users_collection, sessions_collection
+from database import users_collection, sessions_collection, pellet_collection
 from typing import Optional
 import os
 import string
@@ -52,10 +52,23 @@ async def serve_home_page():
     # Check if file exists? Add error handling if needed.
     return FileResponse("public/index.html")
 
-@app.get("/play", response_class=HTMLResponse)
-async def game_page(request: Request):
-    return templates.TemplateResponse("game.html", {"request": request})
+class Pellet(BaseModel):
+    x: float
+    y: float
 
+@app.get("/play", response_class=HTMLResponse)
+def play_game():
+    return FileResponse("game/GameBoard.html")
+
+@app.post("/store-pellet")
+def store_pellet(pellet: Pellet):
+    try:
+        pellet_collection.insert_one(pellet.dict())
+        return {"message": "Pellet stored successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to store pellet: {e}")
+#async def game_page(request: Request):
+ #   return templates.TemplateResponse("../GameBoard.html", {"request": request})
 @app.get("/login", response_class=FileResponse)
 async def serve_login_page(username: Optional[str] = Depends(get_current_user)):
     # Redirect if already logged in

@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phaser Pellet Game</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden; /* Prevent scrollbars */
+            background-color: #2d2d2d;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <script>
+        const config = {
+            type: Phaser.AUTO,
+            width: window.innerWidth,
+            height: window.innerHeight,
+            backgroundColor: '#1d1d1d',
+            physics: {
+                default: 'arcade',
+                arcade: {
+                    debug: false,
+                },
+            },
+            scene: {
+                preload: preload,
+                create: create,
+                update: update,
+            },
+        };
+
+        const game = new Phaser.Game(config);
+
+        let player;
+        let cursors;
+        let pelletImages = ['pellet1', 'pellet2', 'pellet3', 'pellet4'];
+
+        function preload() {
+            this.load.image('background', '/public/imgs/Background.png');
+            this.load.image('pellet1', '/public/imgs/blue_star.png');
+            this.load.image('pellet2', '/public/imgs/green_star.png');
+            this.load.image('pellet3', '/public/imgs/orange_star.png');
+            this.load.image('pellet4', '/public/imgs/yellow_star.png');
+            this.load.image('player', '/public/imgs/PurplePlanet.png');
+        }
+
+        function create() {
+            // Create a large repeating background
+            this.add.tileSprite(5000, 5000, 10000, 10000, 'background').setOrigin(0.5);
+
+            // Set up world bounds
+            this.physics.world.setBounds(0, 0, 10000, 10000);
+
+            // Add the player sprite
+            player = this.physics.add.sprite(500, 500, 'player').setScale(0.2);
+            player.setCollideWorldBounds(true); // Prevent player from leaving the world bounds
+
+            // Configure the camera
+            this.cameras.main.setBounds(0, 0, 10000, 10000);
+            this.cameras.main.startFollow(player);
+
+            // Enable arrow keys for movement
+            cursors = this.input.keyboard.createCursorKeys();
+
+            // Spawn pellets randomly
+             this.time.addEvent({
+                delay: 100, // Spawn a pellet every second
+                callback: spawnPellet,
+                callbackScope: this,
+                loop: true,
+            });
+
+        }
+        function spawnPellet() {
+            // Randomize position
+            const x = Phaser.Math.Between(0, 10000);
+            const y = Phaser.Math.Between(0, 10000);
+            const imageKey = Phaser.Utils.Array.GetRandom(pelletImages);
+            this.add.image(x, y, imageKey).setScale(0.1);
+
+            fetch('/store-pellet', {
+                method: 'POST',
+                headers: {
+                'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ x, y }),
+            }).catch((err) => console.error('Error storing pellet:', err));
+        }
+
+        function update() {
+            const speed = 300;
+            player.setVelocity(0);
+
+            // Player movement
+            if (cursors.left.isDown) {
+                player.setVelocityX(-speed);
+            } else if (cursors.right.isDown) {
+                player.setVelocityX(speed);
+            }
+
+            if (cursors.up.isDown) {
+                player.setVelocityY(-speed);
+            } else if (cursors.down.isDown) {
+                player.setVelocityY(speed);
+            }
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            const newWidth = window.innerWidth;
+            const newHeight = window.innerHeight;
+            game.scale.resize(newWidth, newHeight);
+            game.cameras.main.setViewport(0, 0, newWidth, newHeight);
+        });
+    </script>
+</body>
+</html>
