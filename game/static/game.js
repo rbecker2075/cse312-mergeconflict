@@ -46,8 +46,21 @@ const foodRadius = 10; // Approximate radius for collision (adjust based on sun.
 const growthFactor = 0.0085; // How much scale increases per food item (Increased from 0.005)
 const targetFoodCount = 150; // Target number of food items in the world
 
+// --- Buff Constants ---
+const buffSize = 0.08; // Scale factor for the buff sprite
+const buffMultiplier = 1.5; // Speed increase factor (75% increase)
+const buffDuration = 4000; // Milliseconds the speed boost lasts
+const targetBuffCount = 50; // Target number of buffs in the world
+let speedMultiplier = 1.0; // Current speed multiplier
+let speedBoostTimer = null; // Timer for the buff duration
+let buffIndicator = null; // Sprite to show buff is active
+const buffIndicatorScale = 0.04; // Scale for the indicator icon
+const buffIndicatorOffsetY = 3; // Vertical offset above player
+
 // Let foods be a physics group
 let foods;
+// Let buffs be a physics group
+let buffs;
 
 function preload() {
   // Load the player sprite
@@ -55,6 +68,8 @@ function preload() {
   // Load background and food images
   this.load.image('background', '/game/static/assets/Background.png');
   this.load.image('food', '/game/static/assets/sun.png');
+  // Load the buff image
+  this.load.image('buff', '/game/static/assets/rocket.png');
 }
 
 function create() {
@@ -70,6 +85,7 @@ function create() {
   player.setOrigin(0.5, 0.5);
   player.setScale(playerInitialSize);
   player.setCollideWorldBounds(true); // Keep player inside world
+  player.setDepth(1); // Ensure player is above background, below indicator
   // player.body.setBounce(0.2); // Optional bounce
   // player.body = { velocity: new Phaser.Math.Vector2(0, 0) }; // Remove old velocity object
 
@@ -79,6 +95,13 @@ function create() {
   // Create initial food items spread across the world
   for (let i = 0; i < targetFoodCount; i++) { // Spawn initial food up to the target count
     spawnFood(this);
+  }
+
+  // Create buff group
+  buffs = this.physics.add.group();
+  // Spawn initial buffs up to the target count
+  for (let i = 0; i < targetBuffCount; i++) {
+      spawnBuff(this);
   }
 
   // Set up keyboard input
@@ -93,6 +116,8 @@ function create() {
   // --- Physics Overlaps ---
   // Check overlap between player and food group
   this.physics.add.overlap(player, foods, collectFood, null, this);
+  // Check overlap between player and buff group
+  this.physics.add.overlap(player, buffs, collectBuff, null, this);
 
   // Player 2 overlap will be added dynamically when created
 }
@@ -109,6 +134,19 @@ function spawnFood(sceneContext) {
   foodItem.body.allowGravity = false; // Food doesn't fall
 }
 
+// Function to spawn a single buff item
+function spawnBuff(sceneContext) {
+  // Always try to spawn, density is handled in update
+  const x = Phaser.Math.Between(100, worldWidth - 100); // Use world bounds, slightly inset
+  const y = Phaser.Math.Between(100, worldHeight - 100);
+  const buffItem = buffs.create(x, y, 'buff'); // Add directly to the physics group
+  buffItem.setScale(buffSize);
+  buffItem.setOrigin(0.5, 0.5);
+  buffItem.setImmovable(true); // Buff doesn't get pushed
+  buffItem.body.allowGravity = false; // Buff doesn't fall
+  console.log("Buff spawned at:", x, y); // Debug log
+}
+
 // Callback function when player overlaps with food
 function collectFood(playerPiece, foodItem) {
   // Increase player piece size
@@ -123,6 +161,53 @@ function collectFood(playerPiece, foodItem) {
 
   // Respawn a new food item somewhere else
   spawnFood(this);
+}
+
+// Callback function when player overlaps with a buff
+function collectBuff(playerPiece, buffItem) {
+  console.log("Buff collected!"); // Debug log
+  // Destroy the buff item
+  buffItem.destroy();
+
+  // Apply speed boost
+  speedMultiplier = buffMultiplier;
+
+  // --- Create/Update Buff Indicator --- 
+  // Destroy existing indicator first if player grabs another buff quickly
+  if (buffIndicator) {
+      buffIndicator.destroy();
+  }
+  // Use playerPiece's scene context to add the sprite
+  const scene = playerPiece.scene;
+  buffIndicator = scene.add.sprite(playerPiece.x, playerPiece.y, 'buff');
+  buffIndicator.setScale(buffIndicatorScale);
+  buffIndicator.setOrigin(0.5, 0.5);
+  buffIndicator.setDepth(playerPiece.depth + 1); // Render above the player piece that collected it
+  // Initial position update
+  buffIndicator.y = playerPiece.y - (playerPiece.displayHeight / 2) - (buffIndicator.displayHeight / 2) - buffIndicatorOffsetY;
+
+  // Clear any existing timer before starting a new one
+  if (speedBoostTimer) {
+    speedBoostTimer.remove(false); // Remove timer without calling its callback
+  }
+
+  // Set timer to reset speed
+  speedBoostTimer = this.time.delayedCall(buffDuration, resetSpeed, [], this);
+
+  // Respawn is handled by the density check in update now
+}
+
+// Function to reset player speed after buff duration
+function resetSpeed() {
+    console.log("Buff expired, resetting speed."); // Debug log
+    speedMultiplier = 1.0;
+    speedBoostTimer = null; // Clear the timer reference
+
+    // Destroy buff indicator
+    if (buffIndicator) {
+        buffIndicator.destroy();
+        buffIndicator = null;
+    }
 }
 
 function update(time, delta) {
@@ -143,9 +228,10 @@ function update(time, delta) {
     moveY = 1;
   }
 
-  // Normalize movement vector and set physics velocity
+  // Normalize movement vector and set physics velocity using speed multiplier
   const moveVector = new Phaser.Math.Vector2(moveX, moveY).normalize();
-  player.body.setVelocity(moveVector.x * playerSpeed, moveVector.y * playerSpeed);
+  const effectiveSpeed = playerSpeed * speedMultiplier;
+  player.body.setVelocity(moveVector.x * effectiveSpeed, moveVector.y * effectiveSpeed);
 
   // --- Splitting Mechanic ---
   if (keySPACE.isDown && canSplit && player2 === null) {
@@ -173,6 +259,7 @@ function update(time, delta) {
     player2.setScale(splitScale);
     player2.setCollideWorldBounds(true);
     player2.body.setVelocity(0, 0); // Also start stationary for tween
+    player2.setDepth(player.depth); // Ensure player2 is at the same depth as player1
 
     // Set player 1 scale
     player.setScale(splitScale);
@@ -208,6 +295,8 @@ function update(time, delta) {
             // Add overlap check for player 2 (only if it exists)
             if (player2) {
                  this.physics.add.overlap(player2, foods, collectFood, null, this);
+                 // Add overlap check for player 2 and buffs
+                 this.physics.add.overlap(player2, buffs, collectBuff, null, this);
             }
 
             // Set timer to merge back (only if player2 was successfully created)
@@ -236,6 +325,19 @@ function update(time, delta) {
       spawnFood(this);
   }
 
+  // --- Maintain Buff Density ---
+  // Check periodically and spawn if below target
+  if (buffs.countActive(true) < targetBuffCount && Phaser.Math.RND.frac() < 0.05) { // Check 5% of frames
+      spawnBuff(this);
+  }
+
+  // --- Update Buff Indicator Position --- 
+  if (buffIndicator && player) { // Check if indicator and player exist
+      buffIndicator.x = player.x;
+      // Adjust Y based on player's current display height
+      buffIndicator.y = player.y - (player.displayHeight / 2) - (buffIndicator.displayHeight / 2) - buffIndicatorOffsetY;
+  }
+
   // --- Collision Detection & Growth (Handled by physics overlaps now) ---
   /*
   const playerRadius = (player.width * player.scaleX) / 2; // Recalculate radius based on current scale
@@ -254,12 +356,22 @@ function mergePlayers() {
         const scale2Sq = player2.scaleX * player2.scaleX;
         const combinedScale = Math.sqrt(scale1Sq + scale2Sq);
 
+        // Reset player 1's velocity before scaling to avoid physics glitches
+        if (player && player.body) {
+            player.body.setVelocity(0, 0);
+        }
+
         player.setScale(combinedScale);
         // Optional: Update physics body size after merge
         // player.body.setSize(player.width * player.scaleX, player.height * player.scaleY);
 
         player2.destroy(); // Destroys sprite and physics body
         player2 = null;
+    }
+
+    // Ensure player depth is maintained after potential changes
+    if (player) {
+        player.setDepth(1);
     }
 
     canSplit = true;
