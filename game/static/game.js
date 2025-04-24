@@ -107,7 +107,26 @@ function create() {
           powerText.setPosition(other.x, other.y);
           powerText.setDepth(2);
 
-          otherPlayers[id] = { sprite: other, powerText: powerText, power: info.power };
+          // Add username text
+          const usernameText = this.add.text(0, 0, info.username || 'Guest', {
+            fontSize: '16px',
+            color: '#ffffff',
+            align: 'center',
+            backgroundColor: '#000000',
+            padding: { x: 8, y: 4 },
+            stroke: '#000000',
+            strokeThickness: 4
+          });
+          usernameText.setOrigin(0.5, 0.5);
+          usernameText.setPosition(other.x, other.y - 30); // Position above the power text
+          usernameText.setDepth(2);
+
+          otherPlayers[id] = { 
+            sprite: other, 
+            powerText: powerText, 
+            usernameText: usernameText,
+            power: info.power 
+          };
         } else {
           otherPlayers[id].sprite.x = info.x;
           otherPlayers[id].sprite.y = info.y;
@@ -116,6 +135,10 @@ function create() {
           // Update power text
           otherPlayers[id].powerText.setText(info.power);
           otherPlayers[id].powerText.setPosition(info.x, info.y);
+          
+          // Update username text
+          otherPlayers[id].usernameText.setText(info.username || 'Guest');
+          otherPlayers[id].usernameText.setPosition(info.x, info.y - 30);
         }
       }
     } else if (data.type === "id") {
@@ -125,6 +148,7 @@ function create() {
       if (otherPlayers[data.id]) {
         otherPlayers[data.id].sprite.destroy();
         otherPlayers[data.id].powerText.destroy();
+        otherPlayers[data.id].usernameText.destroy();
         delete otherPlayers[data.id];
       }
     }

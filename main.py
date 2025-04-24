@@ -54,7 +54,14 @@ clients = {}
 async def game_ws(websocket: WebSocket):
     await websocket.accept()
     player_id = str(uuid4())
-    clients[player_id] = {"ws": websocket, "x": 0, "y": 0, "power": 1}
+    
+    # Get the session token from cookies
+    session_token = websocket.cookies.get("session_token")
+    username = None
+    if session_token:
+        username = await get_current_user(session_token)
+    
+    clients[player_id] = {"ws": websocket, "x": 0, "y": 0, "power": 1, "username": username}
 
     # Send back the ID
     await websocket.send_json({"type": "id", "id": player_id})
@@ -101,7 +108,7 @@ async def game_ws(websocket: WebSocket):
             state = {
                 "type": "players",
                 "players": {
-                    pid: {"x": info["x"], "y": info["y"], "power": info["power"]}
+                    pid: {"x": info["x"], "y": info["y"], "power": info["power"], "username": info["username"]}
                     for pid, info in clients.items()
                     if "x" in info and "y" in info
                 }
