@@ -53,6 +53,7 @@ clients = {}
 # Add these at the top with other global variables
 game_start_time = None
 game_duration = 300  # 5 minutes in seconds
+food_instances = []  # List to store food positions
 
 # World dimensions based on 9x9 grid of 1920x1080 background
 bgWidth = 1920
@@ -60,13 +61,24 @@ bgHeight = 1080
 worldWidth = bgWidth * 9
 worldHeight = bgHeight * 9
 
+def generate_food():
+    global food_instances
+    food_instances = []
+    for _ in range(1000):  # Decreased from 3000 to 1500 food items
+        food_instances.append({
+            "x": random.randint(0, worldWidth),
+            "y": random.randint(0, worldHeight),
+            "id": str(uuid4())
+        })
+
 @app.websocket("/ws/game")
 async def game_ws(websocket: WebSocket):
-    global game_start_time
+    global game_start_time, food_instances
     
     # Start the game timer if this is the first connection
     if game_start_time is None and len(clients) == 0:
         game_start_time = time.time()
+        generate_food()  # Generate initial food
     
     await websocket.accept()
     player_id = str(uuid4())
@@ -79,12 +91,13 @@ async def game_ws(websocket: WebSocket):
     
     clients[player_id] = {"ws": websocket, "x": 0, "y": 0, "power": 1, "username": username}
 
-    # Send back the ID and game time remaining
+    # Send back the ID, game time remaining, and initial food positions
     time_remaining = max(0, game_duration - (time.time() - game_start_time)) if game_start_time else game_duration
     await websocket.send_json({
         "type": "id", 
         "id": player_id,
-        "time_remaining": time_remaining
+        "time_remaining": time_remaining,
+        "food": food_instances
     })
 
     try:
@@ -113,6 +126,7 @@ async def game_ws(websocket: WebSocket):
                 
                 # Reset game state
                 game_start_time = time.time()  # Reset timer
+                generate_food()  # Generate new food
                 for client_id in clients:
                     clients[client_id]["power"] = 1  # Reset all powers to 1
                     clients[client_id]["x"] = random.randint(0, worldWidth)  # Random respawn
@@ -123,7 +137,8 @@ async def game_ws(websocket: WebSocket):
                     try:
                         await client["ws"].send_json({
                             "type": "game_reset",
-                            "time_remaining": game_duration
+                            "time_remaining": game_duration,
+                            "food": food_instances
                         })
                     except:
                         pass
@@ -132,11 +147,36 @@ async def game_ws(websocket: WebSocket):
             clients[player_id]["x"] = data["x"]
             clients[player_id]["y"] = data["y"]
 
-            # Check for collisions and update power
+            # Check for food collisions
+            player_x = clients[player_id]["x"]
+            player_y = clients[player_id]["y"]
+            food_to_remove = []
+            
+            for food in food_instances:
+                distance = ((player_x - food["x"]) ** 2 + (player_y - food["y"]) ** 2) ** 0.5
+                if distance < 50:  # Increased from 30 to 50 for food collection radius
+                    food_to_remove.append(food)
+                    clients[player_id]["power"] += 1
+            
+            # Remove collected food and notify all clients
+            if food_to_remove:
+                for food in food_to_remove:
+                    food_instances.remove(food)
+                # Send food update to all clients
+                for client in clients.values():
+                    try:
+                        await client["ws"].send_json({
+                            "type": "food_update",
+                            "removed_food": [f["id"] for f in food_to_remove]
+                        })
+                    except:
+                        pass
+
+            # Check for player collisions and update power
             for pid, client in clients.items():
                 if pid != player_id:
                     distance = ((clients[player_id]["x"] - client["x"]) ** 2 + (clients[player_id]["y"] - client["y"]) ** 2) ** 0.5
-                    if distance < 50:  # Define a threshold for collision
+                    if distance < 75:  # Increased from 50 to 75 for player collision radius
                         # Collision: Compare powers
                         if clients[player_id]["power"] > client["power"]:
                             # Only increase power if loser is not at power 1
@@ -172,7 +212,8 @@ async def game_ws(websocket: WebSocket):
                     for pid, info in clients.items()
                     if "x" in info and "y" in info
                 },
-                "time_remaining": time_remaining
+                "time_remaining": time_remaining,
+                "food": food_instances
             }
             for pid, client in clients.items():
                 try:

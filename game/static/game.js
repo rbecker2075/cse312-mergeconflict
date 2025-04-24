@@ -30,13 +30,14 @@ const game = new Phaser.Game(config);
 
 let player;
 let cursors;
-const playerSpeed = 200;
+const playerSpeed = 400;
 const playerInitialSize = 0.15;
 let socket;
 let otherPlayers = {};
 let playerPower = 0;
 let playerPowerText;
 let timerText;
+let foodInstances = {};  // Store food sprites
 
 // Function to setup WebSocket listeners
 function setupSocketListeners() {
@@ -58,13 +59,33 @@ function setupSocketListeners() {
 // Function to handle socket messages
 function handleSocketMessage(event) {
   const data = JSON.parse(event.data);
-  const scene = game.scene.scenes[0];  // Get the current scene
+  const scene = game.scene.scenes[0];
 
   if (data.type === "players") {
     // Update timer
     const minutes = Math.floor(data.time_remaining / 60);
     const seconds = Math.floor(data.time_remaining % 60);
     timerText.setText(`${minutes}:${seconds.toString().padStart(2, '0')}`);
+
+    // Update food positions
+    if (data.food) {
+      // Remove food that's no longer in the list
+      for (const foodId in foodInstances) {
+        if (!data.food.some(f => f.id === foodId)) {
+          foodInstances[foodId].destroy();
+          delete foodInstances[foodId];
+        }
+      }
+      
+      // Add new food
+      for (const food of data.food) {
+        if (!foodInstances[food.id]) {
+          const foodSprite = scene.add.sprite(food.x, food.y, 'food').setScale(0.1);
+          foodSprite.setDepth(1);
+          foodInstances[food.id] = foodSprite;
+        }
+      }
+    }
 
     for (const [id, info] of Object.entries(data.players)) {
       if (id === socket.id) {
@@ -132,12 +153,22 @@ function handleSocketMessage(event) {
     const minutes = Math.floor(data.time_remaining / 60);
     const seconds = Math.floor(data.time_remaining % 60);
     timerText.setText(`${minutes}:${seconds.toString().padStart(2, '0')}`);
-  } else if (data.type === "remove") {
-    if (otherPlayers[data.id]) {
-      otherPlayers[data.id].sprite.destroy();
-      otherPlayers[data.id].powerText.destroy();
-      otherPlayers[data.id].usernameText.destroy();
-      delete otherPlayers[data.id];
+
+    // Create initial food
+    if (data.food) {
+      for (const food of data.food) {
+        const foodSprite = scene.add.sprite(food.x, food.y, 'food').setScale(0.1);
+        foodSprite.setDepth(1);
+        foodInstances[food.id] = foodSprite;
+      }
+    }
+  } else if (data.type === "food_update") {
+    // Remove collected food
+    for (const foodId of data.removed_food) {
+      if (foodInstances[foodId]) {
+        foodInstances[foodId].destroy();
+        delete foodInstances[foodId];
+      }
     }
   } else if (data.type === "game_over") {
     // Create winner text above the player
@@ -180,12 +211,35 @@ function handleSocketMessage(event) {
     const minutes = Math.floor(game_duration / 60);
     const seconds = Math.floor(game_duration % 60);
     timerText.setText(`${minutes}:${seconds.toString().padStart(2, '0')}`);
+
+    // Clear existing food
+    for (const foodId in foodInstances) {
+      foodInstances[foodId].destroy();
+    }
+    foodInstances = {};
+
+    // Create new food
+    if (data.food) {
+      for (const food of data.food) {
+        const foodSprite = scene.add.sprite(food.x, food.y, 'food').setScale(0.1);
+        foodSprite.setDepth(1);
+        foodInstances[food.id] = foodSprite;
+      }
+    }
+  } else if (data.type === "remove") {
+    if (otherPlayers[data.id]) {
+      otherPlayers[data.id].sprite.destroy();
+      otherPlayers[data.id].powerText.destroy();
+      otherPlayers[data.id].usernameText.destroy();
+      delete otherPlayers[data.id];
+    }
   }
 }
 
 function preload() {
   this.load.image('playerSprite', '/game/static/assets/PurplePlanet.png');
   this.load.image('background', '/game/static/assets/Background.png');
+  this.load.image('food', '/game/static/assets/sun.png');
 }
 
 function create() {
