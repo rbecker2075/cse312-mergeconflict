@@ -7,7 +7,7 @@ services:
     ports:
       - "8080:8000"
     environment:
-      MONGO_URL: mongodb://mongo:27017
+      MONGO_URL: mongodb://mongo:20069
     volumes:
        - logs:/request_logs
     depends_on:
@@ -17,7 +17,8 @@ services:
     image: mongo:7
     container_name: mongodb
     ports:
-      - "27017:27017"
+      - "20420:20069"
+    command: mongod --port 20069
     volumes:
       - mongo_data:/data/db
 
