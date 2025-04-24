@@ -50,8 +50,24 @@ def check_password_complexity(password: str) -> bool:
 
 clients = {}
 
+# Add these at the top with other global variables
+game_start_time = None
+game_duration = 300  # 5 minutes in seconds
+
+# World dimensions based on 9x9 grid of 1920x1080 background
+bgWidth = 1920
+bgHeight = 1080
+worldWidth = bgWidth * 9
+worldHeight = bgHeight * 9
+
 @app.websocket("/ws/game")
 async def game_ws(websocket: WebSocket):
+    global game_start_time
+    
+    # Start the game timer if this is the first connection
+    if game_start_time is None and len(clients) == 0:
+        game_start_time = time.time()
+    
     await websocket.accept()
     player_id = str(uuid4())
     
@@ -63,11 +79,55 @@ async def game_ws(websocket: WebSocket):
     
     clients[player_id] = {"ws": websocket, "x": 0, "y": 0, "power": 1, "username": username}
 
-    # Send back the ID
-    await websocket.send_json({"type": "id", "id": player_id})
+    # Send back the ID and game time remaining
+    time_remaining = max(0, game_duration - (time.time() - game_start_time)) if game_start_time else game_duration
+    await websocket.send_json({
+        "type": "id", 
+        "id": player_id,
+        "time_remaining": time_remaining
+    })
 
     try:
         while True:
+            # Check if game time is up
+            current_time = time.time()
+            time_remaining = max(0, game_duration - (current_time - game_start_time)) if game_start_time else game_duration
+            
+            if time_remaining <= 0 and game_start_time is not None:
+                # Game over - determine winner
+                winner = max(clients.items(), key=lambda x: x[1]["power"])
+                winner_username = winner[1]["username"] or "Guest"
+                
+                # Send game over message to all clients
+                for client in clients.values():
+                    try:
+                        await client["ws"].send_json({
+                            "type": "game_over",
+                            "winner": winner_username
+                        })
+                    except:
+                        pass
+                
+                # Wait for 5 seconds before resetting
+                await asyncio.sleep(5)
+                
+                # Reset game state
+                game_start_time = time.time()  # Reset timer
+                for client_id in clients:
+                    clients[client_id]["power"] = 1  # Reset all powers to 1
+                    clients[client_id]["x"] = random.randint(0, worldWidth)  # Random respawn
+                    clients[client_id]["y"] = random.randint(0, worldHeight)
+                
+                # Send reset message to all clients
+                for client in clients.values():
+                    try:
+                        await client["ws"].send_json({
+                            "type": "game_reset",
+                            "time_remaining": game_duration
+                        })
+                    except:
+                        pass
+
             data = await websocket.receive_json()
             clients[player_id]["x"] = data["x"]
             clients[player_id]["y"] = data["y"]
@@ -111,7 +171,8 @@ async def game_ws(websocket: WebSocket):
                     pid: {"x": info["x"], "y": info["y"], "power": info["power"], "username": info["username"]}
                     for pid, info in clients.items()
                     if "x" in info and "y" in info
-                }
+                },
+                "time_remaining": time_remaining
             }
             for pid, client in clients.items():
                 try:
@@ -122,6 +183,9 @@ async def game_ws(websocket: WebSocket):
     except WebSocketDisconnect:
         # Player disconnecting logic
         del clients[player_id]
+        # If no players left, stop the timer
+        if len(clients) == 0:
+            game_start_time = None
         # Broadcast removal only to other clients
         for other_pid, client in clients.items():
             try:
