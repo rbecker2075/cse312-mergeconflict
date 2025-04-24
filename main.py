@@ -14,6 +14,8 @@ from pydantic import BaseModel # Added for request bodies
 import datetime
 import random
 import time
+import asyncio
+from uuid import uuid4
 
 app = FastAPI(title='Merge Conflict Game', description='Authentication and Game API', version='1.0')
 
@@ -45,6 +47,52 @@ def check_password_complexity(password: str) -> bool:
 
 
 # --- Routes for Serving Frontend Pages ---
+
+clients = {}
+
+@app.websocket("/ws/game")
+async def game_ws(websocket: WebSocket):
+    await websocket.accept()
+    player_id = str(uuid4())
+    clients[player_id] = {"ws": websocket, "x": 0, "y": 0}
+
+    # Send back the ID
+    await websocket.send_json({"type": "id", "id": player_id})
+
+    try:
+        while True:
+            data = await websocket.receive_json()
+            clients[player_id]["x"] = data["x"]
+            clients[player_id]["y"] = data["y"]
+
+            # Prepare data for all players
+            state = {
+                "type": "players",
+                "players": {
+                    pid: {"x": info["x"], "y": info["y"]}
+                    for pid, info in clients.items()
+                    if "x" in info and "y" in info
+                }
+            }
+
+            # Broadcast to all
+            disconnected = []
+            for pid, client in clients.items():
+                try:
+                    await client["ws"].send_json(state)
+                except WebSocketDisconnect:
+                    disconnected.append(pid)
+
+            for pid in disconnected:
+                del clients[pid]
+
+    except WebSocketDisconnect:
+        del clients[player_id]
+        for client in clients.values():
+            try:
+                await client["ws"].send_json({"type": "remove", "id": player_id})
+            except:
+                pass
 
 @app.get("/", response_class=FileResponse)
 async def serve_home_page():
