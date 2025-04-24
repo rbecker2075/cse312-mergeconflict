@@ -72,19 +72,29 @@ async def game_ws(websocket: WebSocket):
                     if distance < 50:  # Define a threshold for collision
                         # Collision: Compare powers
                         if clients[player_id]["power"] > client["power"]:
-                            clients[player_id]["power"] += client["power"]
+                            # Only increase power if loser is not at power 1
+                            if client["power"] > 1:
+                                clients[player_id]["power"] += client["power"]
+                                clients[player_id]["power"] -= 1
                             client["power"] = 1
                         elif clients[player_id]["power"] < client["power"]:
-                            client["power"] += clients[player_id]["power"]
+                            # Only increase power if loser is not at power 1
+                            if clients[player_id]["power"] > 1:
+                                client["power"] += clients[player_id]["power"]
+                                client["power"] -= 1
                             clients[player_id]["power"] = 1
                         else:
                             # Tie case: Randomly choose a winner
                             winner = choice([player_id, pid])
                             if winner == player_id:
                                 clients[player_id]["power"] += client["power"]
+                                if clients[player_id]["power"] > 2:
+                                    clients[player_id]["power"] -= 1
                                 client["power"] = 1
                             else:
-                                clients[pid]["power"] += clients[player_id]["power"]
+                                client["power"] += clients[player_id]["power"]
+                                if client["power"] > 2:
+                                    client["power"] -= 1
                                 clients[player_id]["power"] = 1
 
             # Prepare data for all players

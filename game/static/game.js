@@ -34,6 +34,8 @@ const playerSpeed = 200;
 const playerInitialSize = 0.15;
 let socket;
 let otherPlayers = {};
+let playerPower = 0; // Track local player's power
+let playerPowerText; // Reference to power text
 
 function preload() {
   this.load.image('playerSprite', '/game/static/assets/PurplePlanet.png');
@@ -51,6 +53,20 @@ function create() {
   player.setCollideWorldBounds(true);
   player.setDepth(1);
 
+  // Create power text for local player
+  playerPowerText = this.add.text(0, 0, playerPower.toString(), {
+    fontSize: '24px',
+    color: '#ffffff',
+    align: 'center',
+    backgroundColor: '#000000',
+    padding: { x: 8, y: 4 },
+    stroke: '#000000',
+    strokeThickness: 4
+  });
+  playerPowerText.setOrigin(0.5, 0.5);
+  playerPowerText.setPosition(player.x, player.y);
+  playerPowerText.setDepth(2);
+
   cursors = this.input.keyboard.addKeys('W,A,S,D');
 
   this.cameras.main.setBounds(0, 0, worldWidth, worldHeight);
@@ -66,7 +82,12 @@ function create() {
 
     if (data.type === "players") {
       for (const [id, info] of Object.entries(data.players)) {
-        if (id === socket.id) continue;
+        if (id === socket.id) {
+          // Update local player's power
+          playerPower = info.power;
+          playerPowerText.setText(playerPower.toString());
+          continue;
+        }
 
         if (!otherPlayers[id]) {
           const other = this.add.sprite(info.x, info.y, 'playerSprite').setScale(playerInitialSize);
@@ -74,14 +95,17 @@ function create() {
 
           // Add power text
           const powerText = this.add.text(0, 0, info.power, {
-            fontSize: '16px',
-            color: '#fff',
-            align: 'center'
+            fontSize: '24px',
+            color: '#ffffff',
+            align: 'center',
+            backgroundColor: '#000000',
+            padding: { x: 8, y: 4 },
+            stroke: '#000000',
+            strokeThickness: 4
           });
           powerText.setOrigin(0.5, 0.5);
-
-          // Position the power text above the player sprite
-          powerText.setPosition(other.x, other.y - other.height / 2 - 10); // Adjust position relative to sprite
+          powerText.setPosition(other.x, other.y);
+          powerText.setDepth(2);
 
           otherPlayers[id] = { sprite: other, powerText: powerText, power: info.power };
         } else {
@@ -91,12 +115,12 @@ function create() {
 
           // Update power text
           otherPlayers[id].powerText.setText(info.power);
-          otherPlayers[id].powerText.setPosition(info.x, info.y - otherPlayers[id].sprite.height / 2 - 10); // Keep it above the player
+          otherPlayers[id].powerText.setPosition(info.x, info.y);
         }
       }
     } else if (data.type === "id") {
       socket.id = data.id;
-      socket.connection_id = data.connection_id;  // Store the connection_id
+      socket.connection_id = data.connection_id;
     } else if (data.type === "remove") {
       if (otherPlayers[data.id]) {
         otherPlayers[data.id].sprite.destroy();
@@ -133,4 +157,7 @@ function update(time, delta) {
 
   const moveVector = new Phaser.Math.Vector2(moveX, moveY).normalize();
   player.body.setVelocity(moveVector.x * playerSpeed, moveVector.y * playerSpeed);
+
+  // Update local player's power text position
+  playerPowerText.setPosition(player.x, player.y);
 }
