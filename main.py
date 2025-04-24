@@ -16,7 +16,7 @@ import random
 import time
 import asyncio
 from uuid import uuid4
-
+from random import choice
 app = FastAPI(title='Merge Conflict Game', description='Authentication and Game API', version='1.0')
 
 # Mount 'public/imgs' directory to serve images under '/imgs' path
@@ -54,7 +54,7 @@ clients = {}
 async def game_ws(websocket: WebSocket):
     await websocket.accept()
     player_id = str(uuid4())
-    clients[player_id] = {"ws": websocket, "x": 0, "y": 0}
+    clients[player_id] = {"ws": websocket, "x": 0, "y": 0, "power": 1}
 
     # Send back the ID
     await websocket.send_json({"type": "id", "id": player_id})
@@ -65,34 +65,53 @@ async def game_ws(websocket: WebSocket):
             clients[player_id]["x"] = data["x"]
             clients[player_id]["y"] = data["y"]
 
+            # Check for collisions and update power
+            for pid, client in clients.items():
+                if pid != player_id:
+                    distance = ((clients[player_id]["x"] - client["x"]) ** 2 + (clients[player_id]["y"] - client["y"]) ** 2) ** 0.5
+                    if distance < 50:  # Define a threshold for collision
+                        # Collision: Compare powers
+                        if clients[player_id]["power"] > client["power"]:
+                            clients[player_id]["power"] += client["power"]
+                            client["power"] = 1
+                        elif clients[player_id]["power"] < client["power"]:
+                            client["power"] += clients[player_id]["power"]
+                            clients[player_id]["power"] = 1
+                        else:
+                            # Tie case: Randomly choose a winner
+                            winner = choice([player_id, pid])
+                            if winner == player_id:
+                                clients[player_id]["power"] += client["power"]
+                                client["power"] = 1
+                            else:
+                                clients[pid]["power"] += clients[player_id]["power"]
+                                clients[player_id]["power"] = 1
+
             # Prepare data for all players
             state = {
                 "type": "players",
                 "players": {
-                    pid: {"x": info["x"], "y": info["y"]}
+                    pid: {"x": info["x"], "y": info["y"], "power": info["power"]}
                     for pid, info in clients.items()
                     if "x" in info and "y" in info
                 }
             }
-
-            # Broadcast to all
-            disconnected = []
             for pid, client in clients.items():
                 try:
                     await client["ws"].send_json(state)
                 except WebSocketDisconnect:
-                    disconnected.append(pid)
-
-            for pid in disconnected:
-                del clients[pid]
+                    print(f"Client {pid} disconnected")
 
     except WebSocketDisconnect:
+        # Player disconnecting logic
         del clients[player_id]
-        for client in clients.values():
+        # Broadcast removal only to other clients
+        for other_pid, client in clients.items():
             try:
                 await client["ws"].send_json({"type": "remove", "id": player_id})
             except:
                 pass
+
 
 @app.get("/", response_class=FileResponse)
 async def serve_home_page():

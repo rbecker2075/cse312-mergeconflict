@@ -71,17 +71,36 @@ function create() {
         if (!otherPlayers[id]) {
           const other = this.add.sprite(info.x, info.y, 'playerSprite').setScale(playerInitialSize);
           other.setDepth(1);
-          otherPlayers[id] = other;
+
+          // Add power text
+          const powerText = this.add.text(0, 0, info.power, {
+            fontSize: '16px',
+            color: '#fff',
+            align: 'center'
+          });
+          powerText.setOrigin(0.5, 0.5);
+
+          // Position the power text above the player sprite
+          powerText.setPosition(other.x, other.y - other.height / 2 - 10); // Adjust position relative to sprite
+
+          otherPlayers[id] = { sprite: other, powerText: powerText, power: info.power };
         } else {
-          otherPlayers[id].x = info.x;
-          otherPlayers[id].y = info.y;
+          otherPlayers[id].sprite.x = info.x;
+          otherPlayers[id].sprite.y = info.y;
+          otherPlayers[id].power = info.power;
+
+          // Update power text
+          otherPlayers[id].powerText.setText(info.power);
+          otherPlayers[id].powerText.setPosition(info.x, info.y - otherPlayers[id].sprite.height / 2 - 10); // Keep it above the player
         }
       }
     } else if (data.type === "id") {
       socket.id = data.id;
+      socket.connection_id = data.connection_id;  // Store the connection_id
     } else if (data.type === "remove") {
       if (otherPlayers[data.id]) {
-        otherPlayers[data.id].destroy();
+        otherPlayers[data.id].sprite.destroy();
+        otherPlayers[data.id].powerText.destroy();
         delete otherPlayers[data.id];
       }
     }
