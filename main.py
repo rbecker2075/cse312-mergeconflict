@@ -19,8 +19,8 @@ from uuid import uuid4
 from random import choice
 app = FastAPI(title='Merge Conflict Game', description='Authentication and Game API', version='1.0')
 
-# Mount 'public/imgs' directory to serve images under '/imgs' path
-app.mount("/imgs", StaticFiles(directory="public/Imgs"), name="imgs")
+# Mount 'public/pictures' directory to serve images under '/pictures' path
+app.mount("/pictures", StaticFiles(directory="public/pictures"), name="pictures")
 
 # Mount 'game/static' directory to serve game logic 
 app.mount("/game/static", StaticFiles(directory="game/static"), name="game-static")
