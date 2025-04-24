@@ -290,7 +290,8 @@ function create() {
   this.cameras.main.startFollow(player, true, 0.08, 0.08);
   
   // Create initial WebSocket connection
-  socket = new WebSocket(`ws://${location.host}/ws/game`);
+  const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+  socket = new WebSocket(`${protocol}${location.host}/ws/game`);
   setupSocketListeners();
 
   this.time.addEvent({
