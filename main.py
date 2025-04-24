@@ -367,7 +367,7 @@ async def logout(response: Response = Response(), session_token: Optional[str] =
 def request_log(request : Request, response : Response ):
    tim = datetime.datetime.now()
    content ="time: "+ tim.strftime("%m/%d/%Y, %H:%M:%S") + "\n client " + str(request.client.host)+"\n method " + str(request.method) + "\n url path " + str(request.url.path) + '\n response code ' + str(response.status_code) +"\n\n"
-   with open("public/logs/request_logs.txt", "a") as f:
+   with open("/request_logs/request_logs.txt", "a") as f:
         f.write(content)
 
 def fullLogging(request : Request, response : Response ):
@@ -377,15 +377,15 @@ def fullLogging(request : Request, response : Response ):
         reqS = reqS + header +": "+ request.headers[header]# need to take out auth tokens and handle cookies better
     req = reqS.encode() + b"\n"
     res = b""
-    with open("./logs/fullreq.txt","ab") as f:
+    with open("/fullreq.txt","ab") as f:
         f.write(req)
-    with open("./logs/fullres.txt","ab") as f:
+    with open("/fullres.txt","ab") as f:
         f.write(res)
 
 #to do docker logs, volume
 def errorLog(error : string, tb : string):
-    content = "error: " + error + "\n" + tb
-    with open("./logs/error_log.txt","b") as f:
+    content = "error: " + error + "\n" + "traceback: "+ tb +"\n\n"
+    with open("/error_log.txt","b") as f:
         f.write(content)
 
 # full request and response logs
@@ -404,30 +404,104 @@ async def reqresLogging(request: Request, call_next):
 # --- Remove duplicate /login route and /hello/{name} ---
 
 # --- Add main execution block (optional, for running directly) ---
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
-
-player_dict = {}# I assume we will update this when we get/lose players #assuming {username:player}
+#if __name__ == "__main__":
+#    uvicorn.run(app, host="0.0.0.0", port=8000)
+leaderboard = []#list of dicts containing size and user
+player_dict = {}#will be added to when new user joins, username:player
 class Player:
     def __init__(self, username):
         self.username = username #these are stand in numbers if you want to change them
-        position_x : int #these I assume will be randomly generated and set after
-        position_y : int
-        self.size = 20
-        self.speed = 5
-        self.debuffs = {"debuff_speed":False,"debuff_size":False }#assuming maybe 2 debuffs and 2 buffs, increase and decrease size and speed temp
-        self.buffs = {"buff_speed":False,"buff_size":False }
+        self.position_x : int
+        self.position_y : int
+        self.size = 20 #starting size
+        #self.speed = 5
+        #self.debuffs = {"debuff_speed":False,"debuff_size":False }#assuming maybe 2 debuffs and 2 buffs, increase and decrease size and speed temp
+        #self.buffs = {"buff_speed":False,"buff_size":False }
 
-def winner(player1, player2):#returns dict with winner and loser
+food_dict ={}
+class Food:
+    def __init__(self, foodId, x,y):
+        self.position_x = x
+        self.position_y = y
+        self.idd = foodId
+
+def recievedMove(jsonMessage: string):#updates the player dict to players new position #does not return json position
+    message = json.loads(jsonMessage)
+    username = message["username"]
+    player = player_dict.get(username)
+    player.position_x = message["x"]
+    player.position_y = message["y"]
+    player_dict[username] = player
+
+#call after new player
+def add_player(jsonMessage: string):
+    message = json.loads(jsonMessage)
+    username = message["username"]
+    player = Player(username)
+    player_dict[username] = player #adds player to player dict
+
+def add_food(jsonMessage: string): #call after new food
+    message = json.loads(jsonMessage)
+    foodId = message["foodId"]
+    x = message["x"]
+    y = message["y"]
+    food = Food(foodId, x,y)
+    food_dict[food.idd] = food
+
+def get_leaderboard():
+    pass
+
+#sends the position, size, username, of all players, sends id and position of all food for new player
+def initial(jsonMessage : string): #creates json object {"type":init,"username":newplayerusername,"players":[{"username":username,'x':int,'y':int,"size":int}...],"foods":[{'idd':str,'x':int,'y':int}...]}
+    dict0 = json.loads(jsonMessage)
+    dict1 = {"type":"init","username":dict0.username}
+    players = []
+    for player in player_dict.values():
+        dict2 = {"username":player.username,"x":player.position_x,"y":player.position_y,"size":player.size}
+        players.append(dict2)
+    foods=[]
+    for food in food_dict.values():
+        dict3 = {"id":food.id,"x":food.position_x,"y":food.position_y}
+        foods.append(dict3)
+    dict1["players"] = players
+    dict1["foods"] = foods
+    jInit = json.dumps(dict1)
+    return jInit
+
+def GetsPositionsJson():#gets the json message of all the positions to all users
+    dict1 = {"type":"update"} #{"type":"update","players":[{"username":str,"x":int,"y":int,"size":int}....]}
+    players = []
+    for player in player_dict.values():
+        dict2 = {"username":player.username,"x":player.position_x,"y":player.position_y, "size":player.size}
+        players.append(dict2)
+    dict1["players"] = players
+    jUpdate = json.dumps(dict1)
+    return jUpdate
+
+#recieves ate food message
+def ate_food(jsonMessage: string):#{"type":"ate_food","username":username,"idd":foodId,"size":player size}
+    message = json.loads(jsonMessage)
+    username = message["username"]
+    foodId = message["idd"]
+    player = player_dict.get(username)
+    player.size = player.size + 1
+    player_dict[username] = player
+    del food_dict[foodId]
+    dict1 = {"type":"ate_food","username":username,"idd":foodId,"size":player.size}
+    jMess = json.dumps(dict1)
+    return jMess
+
+
+def winner(player1, player2):#returns dict with winner and loser #might want to comment out later but I'm unsure if we're deciding who is ate client or server side
     if player1.size > player2.size:
         player1.size += player2.size #player 1 gets player 2 size
-        speed_update(player1) #updates player 1 speed
+        #speed_update(player1) #updates player 1 speed
         player_dict[player1.username] = player1
         del player_dict[player2.username]  # player 2 loses and is deleted from player_dict
         return {"loser":player2,"winner":player1} #return player2 to broadcast defeat?
     elif player1.size < player2.size:
         player2.size += player1.size  # player 1 gets player 2 size
-        speed_update(player2)
+        #speed_update(player2)
         player_dict[player2.username] = player2
         del player_dict[player1.username]
         return {"loser":player1, "winner":player2}
@@ -435,17 +509,19 @@ def winner(player1, player2):#returns dict with winner and loser
         p = random.choice([player1, player2])
         if p.username == player1.username:#player 1 is decided winner
             player1.size += player2.size #increase player 1 by player2 size
-            speed_update(player1) #update speed
+            #speed_update(player1) #update speed
             player_dict[player1.username] = player1
             del player_dict[player2.username]  # del player 2
             return {"loser":player2,"winner":player1} #return player2 to broadcast defeat?
         else:#player 2 is decided winner
             player2.size += player1.size
-            speed_update(player2)
+            #speed_update(player2)
             player_dict[player2.username] = player2
             del player_dict[player1.username]
             return {"loser":player1, "winner":player2}
 
+
+'''''
 def add_buff_debuff(player : Player, buff : string):
     if buff in player.debuffs:
         player.debuffs[buff] = True
@@ -505,8 +581,6 @@ def speed_update(player):
             player.speed = player.speed - 1
     player_dict[player.username] = player
     return player
+'''
 
-def ate_food(player):
-    player.size += 1
-    player = speed_update(player)
-    return player
+

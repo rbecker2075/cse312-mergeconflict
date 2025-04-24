@@ -30,6 +30,7 @@ const game = new Phaser.Game(config);
 
 let player;
 let cursors;
+
 const playerSpeed = 400;
 const playerInitialSize = 0.15;
 let socket;
@@ -306,9 +307,21 @@ function create() {
   });
 }
 
+// Function to reset player speed after debuff duration
+function resetSlowness() {
+    console.log("Debuff expired, resetting slowness."); // Debug log
+    slownessFactor = 1.0;
+    debuffTimer = null; // Clear the timer reference
+
+    // Destroy debuff indicator
+    if (debuffIndicator) {
+        debuffIndicator.destroy();
+        debuffIndicator = null;
+    }
+}
+
 function update(time, delta) {
   const dt = delta / 1000;
-
   let moveX = 0;
   let moveY = 0;
 
@@ -318,6 +331,7 @@ function update(time, delta) {
   else if (cursors.S.isDown) moveY = 1;
 
   const moveVector = new Phaser.Math.Vector2(moveX, moveY).normalize();
+
   player.body.setVelocity(moveVector.x * playerSpeed, moveVector.y * playerSpeed);
 
   // Update local player's power text and timer position

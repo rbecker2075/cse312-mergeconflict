@@ -8,6 +8,8 @@ services:
       - "8080:8000"
     environment:
       MONGO_URL: mongodb://mongo:27017
+    volumes:
+       - logs:/request_logs
     depends_on:
       - mongo
 
@@ -21,3 +23,4 @@ services:
 
 volumes:
   mongo_data:
+  logs:
