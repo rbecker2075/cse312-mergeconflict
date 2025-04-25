@@ -49,6 +49,7 @@ def check_password_complexity(password: str) -> bool:
 # --- Routes for Serving Frontend Pages ---
 
 clients = {}
+active_usernames = set() # Track usernames of currently connected players
 
 # Add these at the top with other global variables
 game_start_time = None
@@ -73,8 +74,22 @@ def generate_food():
 
 @app.websocket("/ws/game")
 async def game_ws(websocket: WebSocket):
-    global game_start_time, food_instances
+    global game_start_time, food_instances, active_usernames
     
+    # --- Check for existing connection for logged-in users ---
+    session_token = websocket.cookies.get("session_token")
+    username = None
+    if session_token:
+        username = await get_current_user(session_token)
+        if username in active_usernames:
+            # User is already connected, reject this new connection
+            await websocket.accept() # Accept briefly to send the message
+            await websocket.send_json({"type": "error", "message": "Already connected in another tab."})
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="User already connected")
+            print(f"Rejected connection for user {username}: already connected.")
+            return # Stop further execution for this connection
+    # --- End check ---
+
     # Start the game timer if this is the first connection
     if game_start_time is None and len(clients) == 0:
         game_start_time = time.time()
@@ -83,13 +98,23 @@ async def game_ws(websocket: WebSocket):
     await websocket.accept()
     player_id = str(uuid4())
     
-    # Get the session token from cookies
-    session_token = websocket.cookies.get("session_token")
-    username = None
-    if session_token:
-        username = await get_current_user(session_token)
-    
-    clients[player_id] = {"ws": websocket, "x": 0, "y": 0, "power": 1, "username": username}
+    # Get the session token from cookies (already done above, reuse username)
+    # session_token = websocket.cookies.get("session_token")
+    # username = None
+    # if session_token:
+    #     username = await get_current_user(session_token)
+
+    # Add user to active set if logged in
+    if username:
+        active_usernames.add(username)
+
+    clients[player_id] = {
+        "ws": websocket, 
+        "x": 0, 
+        "y": 0, 
+        "power": 1, 
+        "username": username
+    }
 
     # Send back the ID, game time remaining, and initial food positions
     time_remaining = max(0, game_duration - (time.time() - game_start_time)) if game_start_time else game_duration
@@ -223,6 +248,10 @@ async def game_ws(websocket: WebSocket):
 
     except WebSocketDisconnect:
         # Player disconnecting logic
+        disconnected_username = clients[player_id].get("username")
+        if disconnected_username:
+            active_usernames.discard(disconnected_username) # Remove from active set
+
         del clients[player_id]
         # If no players left, stop the timer
         if len(clients) == 0:
@@ -362,7 +391,17 @@ async def logout(response: Response = Response(), session_token: Optional[str] =
     return redirect_response # Return the redirect response
 
 
+# --- Game Specific API Endpoints ---
 
+@app.get("/api/game/status")
+async def get_game_status(username: Optional[str] = Depends(get_current_user)):
+    """Checks if the currently logged-in user is already in an active game."""
+    if username and username in active_usernames:
+        return {"in_game": True}
+    else:
+        return {"in_game": False}
+
+# --- Logging Middleware and Functions (Keep as is) ---
 
 def request_log(request : Request, response : Response ):
    tim = datetime.datetime.now()
