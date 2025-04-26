@@ -42,6 +42,29 @@ let localUsernameText;
 let leaderboardText;
 let foodInstances = {};  // Store food sprites
 
+// --- New State Variables ---
+let isInvulnerable = false;
+let invulnerabilityEndTime = 0;
+let invulnerabilityText = null; // Text object for invulnerability timer
+let respawnMessageText = null; // Text object for "You got eaten!" message
+let respawnEndTime = 0;     // Track when respawn message should disappear
+let newGameTimerText = null;   // Text object for "New game starting..."
+let newGameEndTime = 0;      // Track when new game timer should end
+let isIntermission = false;    // Flag to hide invuln text during game end countdown
+let playerVisible = true; // To handle hiding player when "eaten"
+let playerInputDisabled = false; // To disable input when "eaten"
+// --- End New State Variables ---
+
+// --- Minimap Configuration ---
+const MINIMAP_WIDTH = 200;
+const MINIMAP_HEIGHT = 150;
+const MINIMAP_X = 10;
+const MINIMAP_Y = 10;
+const MINIMAP_ZOOM = 0.05; // Zoom out more
+const MINIMAP_BORDER_COLOR = 0xffffff; // White border
+const MINIMAP_BORDER_THICKNESS = 2;
+// --- End Minimap Configuration ---
+
 // Function to setup WebSocket listeners
 function setupSocketListeners() {
   socket.addEventListener("open", () => {
@@ -192,6 +215,32 @@ function handleSocketMessage(event) {
           power: info.power 
         };
       } else {
+        const otherPlayer = otherPlayers[id];
+
+        // --- Update Visibility/Appearance based on Server State --- 
+        if (info.is_respawning) {
+            // Hide if respawning
+            if (otherPlayer.sprite.visible) otherPlayer.sprite.setVisible(false);
+            if (otherPlayer.powerText.visible) otherPlayer.powerText.setVisible(false);
+            if (otherPlayer.usernameText.visible) otherPlayer.usernameText.setVisible(false);
+        } else {
+            // Ensure visible if not respawning
+            if (!otherPlayer.sprite.visible) otherPlayer.sprite.setVisible(true);
+            if (!otherPlayer.powerText.visible) otherPlayer.powerText.setVisible(true);
+            if (!otherPlayer.usernameText.visible) otherPlayer.usernameText.setVisible(true);
+
+            // Apply invulnerability visual (e.g., transparency)
+            if (info.isInvulnerable) {
+                // Make more obvious: Tint yellow and slightly transparent
+                otherPlayer.sprite.setAlpha(0.7);
+                otherPlayer.sprite.setTint(0xffff00); // Yellow tint
+            } else {
+                otherPlayer.sprite.setAlpha(1.0); // Fully opaque
+                otherPlayer.sprite.clearTint(); // Remove tint
+            }
+        }
+        // --- End State-Based Visibility --- 
+
         otherPlayers[id].sprite.x = info.x;
         otherPlayers[id].sprite.y = info.y;
         otherPlayers[id].power = info.power;
@@ -231,7 +280,13 @@ function handleSocketMessage(event) {
         delete foodInstances[foodId];
       }
     }
+  } else if (data.type === "pre_reset_timer") {
+    showNewGameTimer(data.duration);
+    
+    // Set intermission flag
+    isIntermission = true;
   } else if (data.type === "game_over") {
+    const scene = game.scene.scenes[0]; // Ensure scene is defined
     // Create winner text above the player
     const winnerText = scene.add.text(player.x, player.y - 60, 
       `Winner is ${data.winner}`, {
@@ -259,6 +314,12 @@ function handleSocketMessage(event) {
     setTimeout(() => {
       winnerText.destroy();
     }, 5000);
+
+    // Clear the "New game starting" timer text
+    hideNewGameTimer();
+
+    // Clear intermission flag
+    isIntermission = false;
   } else if (data.type === "game_reset") {
     // Reset local player's power
     playerPower = 1;
@@ -287,13 +348,114 @@ function handleSocketMessage(event) {
         foodInstances[food.id] = foodSprite;
       }
     }
+
+    hideNewGameTimer(); // Use helper to clear timer
+
+    // Clear intermission flag
+    isIntermission = false;
+
+    // Ensure player sprite & UI are visible and positioned (visual reset)
+    if(player) {
+        player.x = worldWidth / 2; 
+        player.y = worldHeight / 2;
+        player.setVisible(true);
+        playerVisible = true;
+        playerInputDisabled = false; 
+    }
+    if (playerPowerText) playerPowerText.setVisible(true);
+    if (timerText) timerText.setVisible(true);
+    if (localUsernameText) localUsernameText.setVisible(true);
+
+    // Start client-side visual invulnerability timer for the new round
+    startInvulnerability(10);
+
   } else if (data.type === "remove") {
     if (otherPlayers[data.id]) {
       otherPlayers[data.id].sprite.destroy();
-      otherPlayers[data.id].powerText.destroy();
-      otherPlayers[data.id].usernameText.destroy();
+      if (otherPlayers[data.id].powerText) otherPlayers[data.id].powerText.destroy();
+      if (otherPlayers[data.id].usernameText) otherPlayers[data.id].usernameText.destroy();
       delete otherPlayers[data.id];
     }
+  }
+  // --- New Message Handlers (Server needs to send these) ---
+  else if (data.type === "eaten") {
+    // Player was eaten
+    playerVisible = false;
+    playerInputDisabled = true; // <-- Disable input
+    
+    const scene = game.scene.scenes[0]; // Get scene context
+
+    // Hide player and associated UI elements
+    const deathX = player ? player.x : scene.cameras.main.scrollX + scene.cameras.main.width / 2; // Store position before hiding
+    const deathY = player ? player.y : scene.cameras.main.scrollY + scene.cameras.main.height / 2;
+
+    if (player) player.setVisible(false);
+    if (playerPowerText) playerPowerText.setVisible(false);
+    if (timerText) timerText.setVisible(false);
+    if (localUsernameText) localUsernameText.setVisible(false);
+    if (invulnerabilityText) invulnerabilityText.setVisible(false); // Hide invuln timer too
+    if (player && player.body) player.body.setVelocity(0, 0); // Stop movement immediately
+
+    // Display "You got eaten!" message
+    if (respawnMessageText) {
+        respawnMessageText.destroy();
+        respawnMessageText = null; // Ensure reference is cleared
+    }
+    
+    respawnMessageText = scene.add.text(deathX, deathY - 60, // Position above death location
+      'You got eaten! Wait 10 seconds to respawn...', { // Updated text (Manually setting initial text)
+      fontSize: '24px', color: '#ff0000', align: 'center',
+      padding: { x: 15, y: 10 }
+    });
+
+    if (respawnMessageText) {
+        respawnMessageText.setOrigin(0.5);
+        respawnMessageText.setDepth(500); // <<< Increased Depth significantly
+        respawnMessageText.setVisible(true); // <<< Explicitly set visible
+    }
+
+    // Start countdown timer
+    respawnEndTime = scene.time.now + 10000; // 10 seconds
+
+    // Clear intermission flag
+    isIntermission = false;
+  } else if (data.type === "respawn") {
+    // Player is respawning (message from server)
+    console.log("Received 'respawn' message.");
+    if (player) {
+      player.setPosition(data.x, data.y); // Use coordinates from server
+      
+      // Make player and UI visible again
+      player.setVisible(true);
+      if (playerPowerText) playerPowerText.setVisible(true);
+      if (timerText) timerText.setVisible(true);
+      if (localUsernameText) localUsernameText.setVisible(true);
+      // Invulnerability text will be created/made visible by startInvulnerability
+      
+      playerVisible = true;
+      playerInputDisabled = false; // <-- Re-enable input
+      startInvulnerability(10); // Start 10-second invulnerability to match respawn timer
+    }
+    // Ensure power is reset visually (server handles the actual reset)
+    playerPower = 1; // Assuming respawn resets power to 1
+    if (playerPowerText) playerPowerText.setText(playerPower.toString());
+  }
+  // --- End Message Handlers ---
+
+  // --- New Game Timer Update ---
+  if (newGameTimerText && newGameTimerText.active && newGameEndTime > 0) {
+    // Text position is now fixed via scrollFactor(0) in showNewGameTimer
+  } else if (newGameTimerText) {
+      // If text object exists but shouldn't (e.g., endTime <= 0), ensure it's hidden/removed
+      console.warn(`UPDATE LOOP: newGameTimerText exists unexpectedly (endTime=${newGameEndTime}). Forcing hide.`);
+      newGameTimerText.destroy();
+      newGameTimerText = null; 
+  }
+  // --- End New Game Timer --- 
+
+  // Ensure player visibility matches state
+  if (player && player.visible !== playerVisible) {
+      player.setVisible(playerVisible);
   }
 }
 
@@ -321,6 +483,7 @@ function create() {
     console.log("Connected to server, initializing game...");
 
     // --- Initialize Game Elements AFTER successful connection ---
+    // Spawn player in the middle of the world
     player = scene.physics.add.sprite(worldWidth / 2, worldHeight / 2, 'playerSprite');
     player.setOrigin(0.5, 0.5);
     player.setScale(playerInitialSize);
@@ -385,6 +548,31 @@ function create() {
 
     scene.cameras.main.setBounds(0, 0, worldWidth, worldHeight);
     scene.cameras.main.startFollow(player, true, 0.08, 0.08);
+    scene.cameras.main.setName('main'); // Good practice to name cameras
+
+    // --- Minimap Camera Setup ---
+    const minimap = scene.cameras.add(MINIMAP_X, MINIMAP_Y, MINIMAP_WIDTH, MINIMAP_HEIGHT).setZoom(MINIMAP_ZOOM);
+    minimap.setBounds(0, 0, worldWidth, worldHeight);
+    minimap.startFollow(player, true, 0.08, 0.08);
+    minimap.setBackgroundColor(0x000000); // Black background for minimap
+    minimap.setName('minimap');
+
+    // --- Minimap Border ---
+    const minimapBorder = scene.add.graphics();
+    minimapBorder.lineStyle(MINIMAP_BORDER_THICKNESS, MINIMAP_BORDER_COLOR, 1);
+    minimapBorder.strokeRect(MINIMAP_X, MINIMAP_Y, MINIMAP_WIDTH, MINIMAP_HEIGHT);
+    minimapBorder.setScrollFactor(0); // Keep border fixed on screen
+    minimapBorder.setDepth(150); // Ensure border is above minimap but below main UI if needed
+
+    // --- Ignore Fixed UI on Minimap ---
+    // Make sure elements with scrollFactor(0) are not drawn by the minimap
+    minimap.ignore([leaderboardText, minimapBorder]);
+    // Note: Player-attached text (power, username, invuln) will correctly appear on both cameras
+    // If respawnMessageText exists at creation, ignore it too (it's centered)
+    if (respawnMessageText) {
+      minimap.ignore(respawnMessageText);
+      respawnMessageText.setScrollFactor(0); // Ensure it stays centered
+    }
 
     // Start sending position updates
     scene.time.addEvent({
@@ -400,6 +588,9 @@ function create() {
       }
     });
     // --- End Game Initialization ---
+
+    // Start with invulnerability
+    startInvulnerability(10); // 5 seconds invulnerability on initial spawn
 
   });
 
@@ -423,9 +614,98 @@ function create() {
 
 }
 
+// --- New Invulnerability Functions ---
+function startInvulnerability(durationSeconds) {
+  const scene = game.scene.scenes[0];
+  if (!scene || !player || !player.body || !player.active) {
+      return;
+  }
+  
+  isInvulnerable = true;
+  invulnerabilityEndTime = scene.time.now + durationSeconds * 1000;
+
+  // Make player slightly transparent or add tint
+  if (player) player.setAlpha(0.7); 
+
+  // Create/update invulnerability timer text
+  if (invulnerabilityText) invulnerabilityText.destroy();
+  invulnerabilityText = scene.add.text(0, 0, `Invulnerable: ${durationSeconds.toFixed(1)}s`, {
+    fontSize: '10px', color: '#00ff00', align: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)', padding: { x: 5, y: 2 }
+  });
+
+  if (invulnerabilityText) {
+      invulnerabilityText.setOrigin(0.5, 0.5);
+      invulnerabilityText.setDepth(101); // Above player but below UI
+      updateInvulnerabilityTextPosition(); // Initial positioning
+      invulnerabilityText.setVisible(!isIntermission); // Hide if intermission
+  }
+}
+
+function endInvulnerability() {
+  isInvulnerable = false;
+  invulnerabilityEndTime = 0;
+  if (player) player.setAlpha(1.0); // Restore normal alpha
+
+  if (invulnerabilityText) {
+    invulnerabilityText.destroy();
+    invulnerabilityText = null;
+  }
+}
+
+function updateInvulnerabilityTextPosition() {
+  if (invulnerabilityText && player) {
+    // Position above username text
+    invulnerabilityText.setPosition(player.x, player.y - 45); 
+  }
+}
+// --- End Invulnerability Functions ---
+
+// --- New Game Timer Text Helper Functions ---
+function showNewGameTimer(duration) {
+    const scene = game.scene.scenes[0];
+    if (!scene) { // Player might not be needed if text is screen-relative
+        return;
+    }
+    const cam = scene.cameras.main;
+    if (!cam) {
+        return;
+    }
+
+    hideNewGameTimer(); // Ensure any previous timer is gone
+
+    // Position relative to camera viewport center
+    const textX = cam.scrollX + cam.width / 2;
+    const textY = cam.scrollY + cam.height / 2;
+
+    newGameTimerText = scene.add.text(textX, textY,
+        `New game starting in ${duration} seconds!`, {
+        fontSize: '28px', // Make size consistent 
+        color: '#FFD700', // Darker Yellow / Gold
+        align: 'center',
+        backgroundColor: 'rgba(0,0,0,0.6)', 
+        padding: { x: 20, y: 15 } // Adjust padding
+    });
+
+    newGameTimerText.setOrigin(0.5);
+    newGameTimerText.setScrollFactor(0); // <<< Keep fixed on screen
+    newGameTimerText.setDepth(550); // Ensure it's above other UI
+    newGameTimerText.setVisible(true);
+
+    newGameEndTime = scene.time.now + duration * 1000;
+}
+
+function hideNewGameTimer() {
+    if (newGameTimerText) {
+        newGameTimerText.destroy();
+        newGameTimerText = null;
+    }
+    newGameEndTime = 0; // Always reset end time
+}
+// --- End Helper Functions ---
+
 // Function to reset player speed after debuff duration
 function resetSlowness() {
-    console.log("Debuff expired, resetting slowness."); // Debug log
     slownessFactor = 1.0;
     debuffTimer = null; // Clear the timer reference
 
@@ -438,22 +718,29 @@ function resetSlowness() {
 
 function update(time, delta) {
   // Check if player and cursors are initialized before using them
-  if (!player || !cursors || !player.body) {
-    return; // Don't run update logic if game setup hasn't completed
+  if (!player || !cursors || !player.body || !player.active) {
+    return; // Don't run update logic if game setup hasn't completed or player inactive
   }
 
-  const dt = delta / 1000;
-  let moveX = 0;
-  let moveY = 0;
+  // --- Player Movement Input (Only if not disabled) ---
+  if (!playerInputDisabled) {
+    const dt = delta / 1000;
+    let moveX = 0;
+    let moveY = 0;
 
-  if (cursors.A.isDown) moveX = -1;
-  else if (cursors.D.isDown) moveX = 1;
-  if (cursors.W.isDown) moveY = -1;
-  else if (cursors.S.isDown) moveY = 1;
+    if (cursors.A.isDown) moveX = -1;
+    else if (cursors.D.isDown) moveX = 1;
+    if (cursors.W.isDown) moveY = -1;
+    else if (cursors.S.isDown) moveY = 1;
 
-  const moveVector = new Phaser.Math.Vector2(moveX, moveY).normalize();
+    const moveVector = new Phaser.Math.Vector2(moveX, moveY).normalize();
 
-  player.body.setVelocity(moveVector.x * playerSpeed, moveVector.y * playerSpeed);
+    player.body.setVelocity(moveVector.x * playerSpeed, moveVector.y * playerSpeed);
+  } else {
+    // Ensure player velocity is zeroed out if input is disabled
+    player.body.setVelocity(0, 0);
+  }
+  // --- End Player Movement Input ---
 
   // Update local player's power text and timer position
   playerPowerText.setPosition(player.x, player.y);
@@ -461,5 +748,53 @@ function update(time, delta) {
   // Update local username text position
   if (localUsernameText) {
     localUsernameText.setPosition(player.x, player.y - 30);
+  }
+
+  // --- Invulnerability Update Logic ---
+  if (isInvulnerable) {
+    const remainingTime = (invulnerabilityEndTime - time) / 1000;
+    if (remainingTime > 0 && !isIntermission) {
+      if (invulnerabilityText) {
+        invulnerabilityText.setText(`Invulnerable: ${remainingTime.toFixed(1)}s`);
+        updateInvulnerabilityTextPosition(); // Keep text positioned correctly
+        if (!invulnerabilityText.visible) invulnerabilityText.setVisible(true); // Ensure visible
+      }
+      // Optional: Add visual effect like blinking
+      player.setAlpha(0.5 + Math.abs(Math.sin(time / 150)) * 0.4); // Simple blink effect
+    } else { // Time ended OR isIntermission is true
+      // Hide invulnerability text if it exists
+      if (invulnerabilityText && invulnerabilityText.visible) {
+          invulnerabilityText.setVisible(false);
+      }
+      // End invulnerability state if time is up
+      if (remainingTime <= 0) {
+        endInvulnerability();
+      }
+    }
+  }
+  // --- End Invulnerability Update Logic ---
+
+  // --- Respawn Countdown Message Update ---
+  if (respawnMessageText && respawnEndTime > 0) {
+    const scene = game.scene.scenes[0];
+
+    // NO LONGER UPDATING POSITION HERE - text stays at death location
+
+    // Update countdown text
+    const remainingSeconds = Math.max(0, Math.ceil((respawnEndTime - time) / 1000));
+    respawnMessageText.setText(`You've been eaten! Respawning in ${remainingSeconds} seconds`);
+
+    // Fallback removal if time expires before respawn message
+    if (time >= respawnEndTime) {
+        respawnMessageText.destroy();
+        respawnMessageText = null;
+        respawnEndTime = 0;
+    }
+  }
+  // --- End Respawn Countdown ---
+
+  // Ensure player visibility matches state
+  if (player && player.visible !== playerVisible) {
+      player.setVisible(playerVisible);
   }
 }

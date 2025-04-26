@@ -53,7 +53,7 @@ active_usernames = set() # Track usernames of currently connected players
 
 # Add these at the top with other global variables
 game_start_time = None
-game_duration = 300  # 5 minutes in seconds
+game_duration = 300   # 5 minutes in seconds
 food_instances = []  # List to store food positions
 
 # World dimensions based on 9x9 grid of 1920x1080 background
@@ -71,6 +71,42 @@ def generate_food():
             "y": random.randint(0, worldHeight),
             "id": str(uuid4())
         })
+
+# --- Helper Function for Delayed Respawn ---
+async def schedule_respawn(loser_id: str):
+    """Waits respawn_delay seconds, calculates new position, updates state, and sends respawn message."""
+    respawn_delay = 10 # Increased respawn delay
+    await asyncio.sleep(respawn_delay)
+    if loser_id in clients: # Check if client still connected
+        new_x = random.randint(0, worldWidth)  # Respawn randomly
+        new_y = random.randint(0, worldHeight)
+        clients[loser_id]["x"] = new_x
+        clients[loser_id]["y"] = new_y
+        # Note: Power was already reset to 1 earlier
+        
+        loser_ws = clients[loser_id]["ws"]
+        try:
+            await loser_ws.send_json({
+                "type": "respawn", 
+                "x": new_x, 
+                "y": new_y
+            })
+            # Clear the respawning flag now that they have respawned
+            clients[loser_id]["is_respawning"] = False
+            
+            # Make player invulnerable after respawn
+            clients[loser_id]["isInvulnerable"] = True
+            invulnerability_duration = 10 # Match client-side setting
+            asyncio.create_task(end_invulnerability(loser_id, invulnerability_duration))
+        except Exception as e:
+            print(f"Error sending respawn message to {loser_id}: {e}")
+
+# --- Helper Function to End Invulnerability ---
+async def end_invulnerability(player_id: str, duration: int):
+    """Waits for the duration and sets the player's invulnerability flag to False."""
+    await asyncio.sleep(duration)
+    if player_id in clients:
+        clients[player_id]["isInvulnerable"] = False
 
 @app.websocket("/ws/game")
 async def game_ws(websocket: WebSocket):
@@ -110,11 +146,17 @@ async def game_ws(websocket: WebSocket):
 
     clients[player_id] = {
         "ws": websocket, 
-        "x": 0, 
-        "y": 0, 
+        "x": worldWidth / 2,  # Spawn in center
+        "y": worldHeight / 2,  # Spawn in center
         "power": 1, 
-        "username": username
+        "username": username,
+        "is_respawning": False,
+        "isInvulnerable": True # Player starts invulnerable
     }
+
+    # Start invulnerability timer for new player
+    invulnerability_duration = 10 # Match client-side setting
+    asyncio.create_task(end_invulnerability(player_id, invulnerability_duration))
 
     # Send back the ID, game time remaining, and initial food positions
     time_remaining = max(0, game_duration - (time.time() - game_start_time)) if game_start_time else game_duration
@@ -135,6 +177,8 @@ async def game_ws(websocket: WebSocket):
                 # Game over - determine winner
                 winner = max(clients.items(), key=lambda x: x[1]["power"])
                 winner_username = winner[1]["username"] or "Guest"
+                winner_display_duration = 5 # How long to show winner name
+                reset_countdown_duration = 10 # How long the "New game starting" countdown lasts
                 
                 # Send game over message to all clients
                 for client in clients.values():
@@ -144,18 +188,41 @@ async def game_ws(websocket: WebSocket):
                             "winner": winner_username
                         })
                     except:
-                        pass
+                        print(f"Error sending game_over message to a client.")
+                        pass # Ignore errors for disconnected clients
                 
-                # Wait for 5 seconds before resetting
-                await asyncio.sleep(5)
+                # --- Make all players invulnerable during reset countdown --- 
+                for pid in clients:
+                    if pid in clients: # Check they didn't disconnect right now
+                        clients[pid]["isInvulnerable"] = True 
+                        clients[pid]["is_respawning"] = False # Ensure this is false too
+                # --- End Invulnerability Set --- 
+
+                # Wait briefly for winner display
+                await asyncio.sleep(winner_display_duration)
+
+                # --- Send pre-reset countdown trigger --- 
+                await broadcast_message({
+                    "type": "pre_reset_timer",
+                    "duration": reset_countdown_duration
+                })
+                # --- End pre-reset trigger ---
+
+                # Wait for the countdown duration before actually resetting
+                await asyncio.sleep(reset_countdown_duration)
                 
                 # Reset game state
                 game_start_time = time.time()  # Reset timer
                 generate_food()  # Generate new food
+                invulnerability_duration = 10 # Duration for post-reset invulnerability
                 for client_id in clients:
                     clients[client_id]["power"] = 1  # Reset all powers to 1
                     clients[client_id]["x"] = random.randint(0, worldWidth)  # Random respawn
                     clients[client_id]["y"] = random.randint(0, worldHeight)
+                    clients[client_id]["is_respawning"] = False # Ensure respawn flag is clear
+                    clients[client_id]["isInvulnerable"] = True # Grant invulnerability
+                    # Start timer to end invulnerability
+                    asyncio.create_task(end_invulnerability(client_id, invulnerability_duration))
                 
                 # Send reset message to all clients
                 for client in clients.values():
@@ -198,71 +265,132 @@ async def game_ws(websocket: WebSocket):
                         pass
 
             # Check for player collisions and update power
-            for pid, client in clients.items():
-                if pid != player_id:
-                    distance = ((clients[player_id]["x"] - client["x"]) ** 2 + (clients[player_id]["y"] - client["y"]) ** 2) ** 0.5
-                    if distance < 75:  # Increased from 50 to 75 for player collision radius
-                        # Collision: Compare powers
-                        if clients[player_id]["power"] > client["power"]:
-                            # Only increase power if loser is not at power 1
-                            if client["power"] > 1:
-                                clients[player_id]["power"] += client["power"]
-                                clients[player_id]["power"] -= 1
-                            client["power"] = 1
-                        elif clients[player_id]["power"] < client["power"]:
-                            # Only increase power if loser is not at power 1
-                            if clients[player_id]["power"] > 1:
-                                client["power"] += clients[player_id]["power"]
-                                client["power"] -= 1
-                            clients[player_id]["power"] = 1
-                        else:
-                            # Tie case: Randomly choose a winner
-                            winner = choice([player_id, pid])
-                            if winner == player_id:
-                                clients[player_id]["power"] += client["power"]
-                                if clients[player_id]["power"] > 2:
-                                    clients[player_id]["power"] -= 1
-                                client["power"] = 1
-                            else:
-                                client["power"] += clients[player_id]["power"]
-                                if client["power"] > 2:
-                                    client["power"] -= 1
-                                clients[player_id]["power"] = 1
+            # Store players to process collisions for to avoid modifying during iteration
+            current_player_ids = list(clients.keys())
+            processed_collisions = set() # Avoid double checks
+
+            for p1_id in current_player_ids:
+                if p1_id not in clients or p1_id in processed_collisions: # Check if player still exists
+                    continue
+                
+                for p2_id in current_player_ids:
+                    if p1_id == p2_id or p2_id not in clients or p2_id in processed_collisions: # Check if other player exists and not self
+                        continue
+
+                    # --- Check if either player is currently respawning --- 
+                    if clients[p1_id].get("is_respawning", False) or clients[p2_id].get("is_respawning", False):
+                        continue # Skip collision check if one is respawning
+
+                    # --- Check if either player is invulnerable ---
+                    if clients[p1_id].get("isInvulnerable", False) or clients[p2_id].get("isInvulnerable", False):
+                        continue # Skip collision check if one is invulnerable
+                    # --- End Checks ---
+
+                    p1 = clients[p1_id]
+                    p2 = clients[p2_id]
+
+                    distance = ((p1["x"] - p2["x"]) ** 2 + (p1["y"] - p2["y"]) ** 2) ** 0.5
+
+                    if distance < 75: # Collision detected
+                        processed_collisions.add(p1_id)
+                        processed_collisions.add(p2_id)
+
+                        winner_id, loser_id = None, None
+                        p1_power = p1["power"]
+                        p2_power = p2["power"]
+
+                        if p1_power > p2_power:
+                            winner_id, loser_id = p1_id, p2_id
+                        elif p2_power > p1_power:
+                            winner_id, loser_id = p2_id, p1_id
+                        else: # Tie
+                            chosen_winner = random.choice([p1_id, p2_id])
+                            winner_id = chosen_winner
+                            loser_id = p2_id if chosen_winner == p1_id else p1_id
+
+                        # Process the win/loss if winner and loser are determined
+                        if winner_id and loser_id:
+                            winner = clients[winner_id]
+                            loser = clients[loser_id]
+                            
+                            # Add power (only add if loser is not already at 1, prevents negative power)
+                            power_gain = loser["power"] if loser["power"] > 1 else 1
+                            winner["power"] += power_gain
+                            
+                            # Reset loser power *immediately* in state
+                            loser["power"] = 1
+                            loser["is_respawning"] = True # <<< SET RESPAWNING FLAG
+                            
+                            # Send "eaten" message to loser
+                            try:
+                                loser_ws = loser["ws"]
+                                asyncio.create_task(loser_ws.send_json({"type": "eaten"}))
+                            except Exception as e:
+                                print(f"Error sending 'eaten' message to {loser_id}: {e}")
+                            
+                            # Schedule the respawn task for the loser
+                            asyncio.create_task(schedule_respawn(loser_id))
+
+                        break # Move to next p1_id after processing a collision for p1
 
             # Prepare data for all players
+            # Gather current state safely
+            current_clients_items = list(clients.items()) # Copy items to prevent modification issues
             state = {
                 "type": "players",
                 "players": {
-                    pid: {"x": info["x"], "y": info["y"], "power": info["power"], "username": info["username"]}
-                    for pid, info in clients.items()
-                    if "x" in info and "y" in info
+                    pid: {
+                        "x": info["x"],
+                        "y": info["y"],
+                        "power": info["power"],
+                        "username": info["username"],
+                        "is_respawning": info.get("is_respawning", False),
+                        "isInvulnerable": info.get("isInvulnerable", False)
+                    }
+                    for pid, info in current_clients_items
+                    if "ws" in info # Ensure basic client structure exists
                 },
                 "time_remaining": time_remaining,
                 "food": food_instances
             }
-            for pid, client in clients.items():
+            
+            # Safely broadcast state to all *currently connected* clients
+            clients_to_remove = []
+            for pid, client in current_clients_items:
                 try:
-                    await client["ws"].send_json(state)
-                except WebSocketDisconnect:
-                    print(f"Client {pid} disconnected")
+                    if "ws" in client:
+                        await client["ws"].send_json(state)
+                except (WebSocketDisconnect, RuntimeError) as e: # Catch disconnects and runtime errors (like sending after close)
+                    print(f"Client {pid} disconnected during broadcast or send error: {e}")
+                    clients_to_remove.append(pid)
+            
+            # Clean up clients that caused errors during broadcast
+            for pid in clients_to_remove:
+                if pid in clients:
+                    disconnected_username = clients[pid].get("username")
+                    if disconnected_username:
+                        active_usernames.discard(disconnected_username)
+                    del clients[pid]
+                    # No need to broadcast removal here, as they already disconnected
 
     except WebSocketDisconnect:
         # Player disconnecting logic
-        disconnected_username = clients[player_id].get("username")
-        if disconnected_username:
-            active_usernames.discard(disconnected_username) # Remove from active set
+        pass # Or keep the original disconnection logic here if needed
 
-        del clients[player_id]
-        # If no players left, stop the timer
-        if len(clients) == 0:
-            game_start_time = None
-        # Broadcast removal only to other clients
-        for other_pid, client in clients.items():
-            try:
-                await client["ws"].send_json({"type": "remove", "id": player_id})
-            except:
-                pass
 
+# --- Helper Function to Broadcast Messages --- 
+async def broadcast_message(message: dict):
+    """Sends a JSON message to all currently connected clients."""
+    # Create a copy of client websockets to iterate over, avoiding modification issues
+    current_websockets = [info["ws"] for info in clients.values() if "ws" in info]
+    for ws in current_websockets:
+        try:
+            await ws.send_json(message)
+        except (WebSocketDisconnect, RuntimeError) as e:
+            # Handle potential errors silently during broadcast, main loop handles cleanup
+            print(f"Error during broadcast to a client: {e}")
+            pass
+# --- End Broadcast Helper ---
 
 @app.get("/", response_class=FileResponse)
 async def serve_home_page():
