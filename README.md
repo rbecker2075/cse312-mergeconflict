@@ -4,9 +4,11 @@
 
 ### Database: MongoDB
 
+### Logs: Logs are witten to cse312-mergeconflict/logs/request_logs.log
+
 ### Big goal:
 
-* Agar.io clone
+* Agar.io clone - https://merge-conflict.cse312.dev/
 
 ### Current Goals:
 * phaser.io

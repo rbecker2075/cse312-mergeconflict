@@ -11,12 +11,15 @@ import os
 import string
 from auth import get_password_hash, verify_password, create_access_token, hash_token, get_current_user
 from pydantic import BaseModel # Added for request bodies
-import datetime
+from datetime import datetime
 import random
 import time
 import asyncio
+import logging
 from uuid import uuid4
 from random import choice
+from pathlib import Path
+
 app = FastAPI(title='Merge Conflict Game', description='Authentication and Game API', version='1.0')
 
 # Mount 'public/pictures' directory to serve images under '/pictures' path
@@ -107,6 +110,43 @@ async def end_invulnerability(player_id: str, duration: int):
     await asyncio.sleep(duration)
     if player_id in clients:
         clients[player_id]["isInvulnerable"] = False
+
+# Set up logging
+LOG_DIR = Path("/app/logs")
+LOG_FILE = LOG_DIR / "request_logs.log"
+
+# Ensure logs directory exists with proper permissions
+LOG_DIR.mkdir(exist_ok=True, mode=0o777)  # Creates directory if it doesn't exist
+
+logger = logging.getLogger("request_logger")
+logger.setLevel(logging.INFO)
+
+# Create file handler
+file_handler = logging.FileHandler(LOG_FILE)
+file_handler.setLevel(logging.INFO)
+
+# Create formatter
+formatter = logging.Formatter('%(asctime)s - %(client_ip)s - %(method)s - %(path)s')
+file_handler.setFormatter(formatter)
+
+logger.addHandler(file_handler)
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    client_ip = request.headers.get('x-real-ip', request.client.host if request.client else "unknown")
+    
+    logger.info(
+        "",
+        extra={
+            "client_ip": client_ip,
+            "method": request.method,
+            "path": request.url.path,
+            "protocol": request.url.scheme  # Will show 'https'
+        }
+    )
+    
+    response = await call_next(request)
+    return response
 
 @app.websocket("/ws/game")
 async def game_ws(websocket: WebSocket):
@@ -554,7 +594,7 @@ def errorLog(error : string, tb : string):
     content = "error: " + error + "\n" + "traceback: "+ tb +"\n\n"
     with open("/error_log.txt","b") as f:
         f.write(content)
-
+'''
 # full request and response logs
 @app.middleware("http")
 async def reqresLogging(request: Request, call_next):
@@ -568,6 +608,7 @@ async def reqresLogging(request: Request, call_next):
     request_log(request,response)
     #fullLogging(request,response)
     return response # Return the actual response now
+'''
 # --- Remove duplicate /login route and /hello/{name} ---
 
 # --- Add main execution block (optional, for running directly) ---
