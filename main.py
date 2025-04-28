@@ -111,42 +111,29 @@ async def end_invulnerability(player_id: str, duration: int):
     if player_id in clients:
         clients[player_id]["isInvulnerable"] = False
 
-# Set up logging
-LOG_DIR = Path("/app/logs")
-LOG_FILE = LOG_DIR / "request_logs.log"
-
-# Ensure logs directory exists with proper permissions
-LOG_DIR.mkdir(exist_ok=True, mode=0o777)  # Creates directory if it doesn't exist
+# Log to the project root (outside /logs)
+LOG_FILE = Path("/app/host_mount/request_logs.log")  # Path in container
+LOG_FILE.parent.mkdir(exist_ok=True, parents=True)  # Ensure parent dir exists
 
 logger = logging.getLogger("request_logger")
 logger.setLevel(logging.INFO)
 
-# Create file handler
+# Configure file handler
 file_handler = logging.FileHandler(LOG_FILE)
-file_handler.setLevel(logging.INFO)
-
-# Create formatter
-formatter = logging.Formatter('%(asctime)s - %(client_ip)s - %(method)s - %(path)s')
-file_handler.setFormatter(formatter)
-
+file_handler.setFormatter(
+    logging.Formatter('%(asctime)s - %(client_ip)s - %(method)s - %(path)s')
+)
 logger.addHandler(file_handler)
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    client_ip = request.headers.get('x-real-ip', request.client.host if request.client else "unknown")
-    
-    logger.info(
-        "",
-        extra={
-            "client_ip": client_ip,
-            "method": request.method,
-            "path": request.url.path,
-            "protocol": request.url.scheme  # Will show 'https'
-        }
-    )
-    
-    response = await call_next(request)
-    return response
+    client_ip = request.headers.get("x-real-ip", request.client.host or "unknown")
+    logger.info("", extra={
+        "client_ip": client_ip,
+        "method": request.method,
+        "path": request.url.path
+    })
+    return await call_next(request)
 
 @app.websocket("/ws/game")
 async def game_ws(websocket: WebSocket):
