@@ -501,6 +501,21 @@ async def api_register(credentials: UserCredentials = Body(...)):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Username cannot be longer than 15 characters."
         )
+    DISALLOWED_CHARS = {
+    '<', '>', '"', "'", '&',   # HTML/XML injection
+    '/', '\\',                 # Path traversal
+    '{', '}', '[', ']',        # Template/JSON injection
+    ';',                       # Command injection
+    '=', '(', ')',             # Code execution risks
+    '|', '!', '`',             # Shell/Pipeline risks
+    '$', '*', '~'              # Regex/special chars
+    }
+    for char in credentials.username:
+        if char in DISALLOWED_CHARS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Username contains invalid characters."
+            )
 
     # Validate password complexity.
     if not check_password_complexity(credentials.password):

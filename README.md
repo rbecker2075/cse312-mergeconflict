@@ -4,7 +4,7 @@
 
 ### Database: MongoDB
 
-### Logs: Logs are witten to cse312-mergeconflict/logs/request_logs.log
+### Logs: Logs are witten to cse312-mergeconflict/request_logs.log
 
 ### Big goal:
 
@@ -15,12 +15,11 @@
 * game implementation 
 
 ### Next Goals
-* Deployment 
 
 ### Past Goals:
 * DockerCompose -- started, have the docker-compose file to successfully build basic app and database
-
 * Database -- have database running in docker, currently not sure if in seperate or same object but will fix if wrong in next commit
 * Authentication 
 * Logging -- moved to main, using middleware
+* Deployment -- Deployed on Team server https://merge-conflict.cse312.dev/
 
