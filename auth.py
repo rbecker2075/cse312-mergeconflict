@@ -8,11 +8,16 @@ from datetime import datetime, timedelta, timezone
 import secrets
 import hashlib
 import os
+from dotenv import load_dotenv
 from database import sessions_collection # Import database collection for session validation
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Security Configuration
 # Use environment variable for SECRET_KEY in production
-SECRET_KEY = "5174520a6e38659f4bf7f6ac30fb2d3e625ba7d8a01ac213edac07611448bb7b"
+# Provide the old key as a default fallback, but ideally, the env var should always be set.
+SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256" # Algorithm for JWT encoding
 ACCESS_TOKEN_EXPIRE_MINUTES = 30 * 24 * 60  # Token validity: 30 days
 
