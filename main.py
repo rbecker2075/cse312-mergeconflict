@@ -112,19 +112,43 @@ async def end_invulnerability(player_id: str, duration: int):
     if player_id in clients:
         clients[player_id]["isInvulnerable"] = False
 
+OFFSET_SECONDS = -4 * 3600
+
+# Log to the project root (outside /logs)
+def adjusted_localtime_converter(timestamp):
+    """
+    Applies an offset to the timestamp and then converts using time.localtime.
+    """
+    adjusted_timestamp = timestamp + OFFSET_SECONDS
+    return time.localtime(adjusted_timestamp)
+
+# --- Your existing setup (with modifications for the formatter) ---
+
 # Log to the project root (outside /logs)
 LOG_FILE = Path("/app/host_mount/request_logs.log")  # Path in container
 LOG_FILE.parent.mkdir(exist_ok=True, parents=True)  # Ensure parent dir exists
 
+# Get the specific logger instance
 logger = logging.getLogger("request_logger")
 logger.setLevel(logging.INFO)
 
-# Configure file handler
-file_handler = logging.FileHandler(LOG_FILE)
-file_handler.setFormatter(
-    logging.Formatter('%(asctime)s - %(client_ip)s - %(method)s - %(path)s')
-)
-logger.addHandler(file_handler)
+# Prevent adding multiple handlers if this code runs multiple times (e.g., in a test)
+if not logger.handlers:
+    # Configure file handler
+    file_handler = logging.FileHandler(LOG_FILE)
+
+    # 1. Create the standard formatter instance with your desired format string
+    log_format = '%(asctime)s - %(client_ip)s - %(method)s - %(path)s'
+    formatter = logging.Formatter(log_format) # Removed datefmt, using default
+
+    # 2. *** Set the custom converter on the formatter instance ***
+    formatter.converter = adjusted_localtime_converter
+
+    # 3. Set the modified formatter on the handler
+    file_handler.setFormatter(formatter)
+
+    # Add the handler to the logger
+    logger.addHandler(file_handler)
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
