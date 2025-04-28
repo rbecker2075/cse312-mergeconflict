@@ -16,6 +16,7 @@ import random
 import time
 import asyncio
 import logging
+from zoneinfo import ZoneInfo
 from uuid import uuid4
 from random import choice
 from pathlib import Path
@@ -458,7 +459,13 @@ async def auth_status(username: Optional[str] = Depends(get_current_user)):
 async def api_login(credentials: UserCredentials = Body(...), response: Response = Response()):
     """Handles user login via API, expects JSON credentials."""
     user = users_collection.find_one({"username": credentials.username})
-    if not user or not verify_password(credentials.password, user["hashed_password"]):
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+        )
+    salt = user.get("salt", "")
+    if not verify_password(credentials.password, salt, user["hashed_password"]):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
@@ -532,11 +539,12 @@ async def api_register(credentials: UserCredentials = Body(...)):
         )
 
     # Hash the password.
-    hashed_password = get_password_hash(credentials.password)
+    salt, hashed_password = get_password_hash(credentials.password)
 
     # Store the new user.
     users_collection.insert_one({
         "username": credentials.username,
+        "salt": salt,
         "hashed_password": hashed_password
     })
 

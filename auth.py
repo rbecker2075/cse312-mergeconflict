@@ -22,6 +22,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # Pydantic model for user data (example, not directly used in this file)
 class User(BaseModel):
     username: str
+    salt: str
     hashed_password: str
 
 # Pydantic model for data expected within JWT payload
@@ -29,12 +30,16 @@ class TokenData(BaseModel):
     username: Optional[str] = None
 
 # Verifies a plain text password against a stored hash.
-def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
+def verify_password(plain_password: str, salt: str, hashed_password: str) -> bool:
+    """Verify a password by prepending the salt and matching against the stored hash."""
+    return pwd_context.verify(salt + plain_password, hashed_password)
 
 # Hashes a plain text password using the configured context.
-def get_password_hash(password):
-    return pwd_context.hash(password)
+def get_password_hash(password: str) -> tuple[str, str]:
+    """Generate a unique salt and hash the password with it, returning (salt, hashed_password)."""
+    salt = secrets.token_hex(16)
+    hashed = pwd_context.hash(salt + password)
+    return salt, hashed
 
 # Creates a JWT access token.
 def create_access_token(data: dict):
