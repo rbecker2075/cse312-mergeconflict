@@ -4,7 +4,7 @@ from fastapi import Depends, HTTPException, status, Cookie
 from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel
 from typing import Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import secrets
 import hashlib
 import os
@@ -12,7 +12,7 @@ from database import sessions_collection # Import database collection for sessio
 
 # Security Configuration
 # Use environment variable for SECRET_KEY in production
-SECRET_KEY = os.environ.get("SECRET_KEY", secrets.token_hex(32))
+SECRET_KEY = "5174520a6e38659f4bf7f6ac30fb2d3e625ba7d8a01ac213edac07611448bb7b"
 ALGORITHM = "HS256" # Algorithm for JWT encoding
 ACCESS_TOKEN_EXPIRE_MINUTES = 30 * 24 * 60  # Token validity: 30 days
 
@@ -45,7 +45,7 @@ def get_password_hash(password: str) -> tuple[str, str]:
 def create_access_token(data: dict):
     to_encode = data.copy()
     # Set token expiration time
-    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     # Encode the payload into a JWT string
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
