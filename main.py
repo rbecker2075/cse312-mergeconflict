@@ -426,8 +426,11 @@ async def game_ws(websocket: WebSocket):
                     # No need to broadcast removal here, as they already disconnected
 
     except WebSocketDisconnect:
-        # Player disconnecting logic
-        pass # Or keep the original disconnection logic here if needed
+        # Player disconnecting logic: remove the user from active_usernames and clients
+        disconnected_username = clients[player_id].get("username")
+        if disconnected_username:
+            active_usernames.discard(disconnected_username)
+        clients.pop(player_id, None)
 
 
 # --- Helper Function to Broadcast Messages --- 
