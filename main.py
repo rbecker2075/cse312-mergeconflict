@@ -2,7 +2,7 @@ import uvicorn
 import asyncio
 import json
 from fastapi import FastAPI, Request, Depends, HTTPException, status, Response, Cookie, Body, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from database import users_collection, sessions_collection
@@ -124,41 +124,195 @@ def adjusted_localtime_converter(timestamp):
 
 # --- Your existing setup (with modifications for the formatter) ---
 
-# Log to the project root (outside /logs)
-LOG_FILE = Path("/app/host_mount/request_logs.log")  # Path in container
-LOG_FILE.parent.mkdir(exist_ok=True, parents=True)  # Ensure parent dir exists
+# --- Basic Request Logger Setup (Existing) ---
+LOG_FILE = Path("/app/host_mount/request_logs.log") # Path in container
+LOG_FILE.parent.mkdir(exist_ok=True, parents=True)
 
 # Get the specific logger instance
-logger = logging.getLogger("request_logger")
-logger.setLevel(logging.INFO)
+request_logger = logging.getLogger("request_logger")
+request_logger.setLevel(logging.INFO)
 
-# Prevent adding multiple handlers if this code runs multiple times (e.g., in a test)
-if not logger.handlers:
-    # Configure file handler
+# Prevent adding multiple handlers
+if not request_logger.handlers:
     file_handler = logging.FileHandler(LOG_FILE)
-
-    # 1. Create the standard formatter instance with your desired format string
     log_format = '%(asctime)s - %(client_ip)s - %(method)s - %(path)s'
-    formatter = logging.Formatter(log_format) # Removed datefmt, using default
-
-    # 2. *** Set the custom converter on the formatter instance ***
-    formatter.converter = adjusted_localtime_converter
-
-    # 3. Set the modified formatter on the handler
+    formatter = logging.Formatter(log_format)
+    # Uncomment the next line if using the custom time converter
+    # formatter.converter = adjusted_localtime_converter
     file_handler.setFormatter(formatter)
+    request_logger.addHandler(file_handler)
 
-    # Add the handler to the logger
-    logger.addHandler(file_handler)
+# --- Full Request/Response Logger Setup (New) ---
+FULL_LOG_FILE = Path("/app/host_mount/full_request_response.log") # Path in container
+FULL_LOG_FILE.parent.mkdir(exist_ok=True, parents=True)
 
+full_logger = logging.getLogger("full_request_response_logger")
+full_logger.setLevel(logging.INFO)
+
+# Prevent adding multiple handlers
+if not full_logger.handlers:
+    full_file_handler = logging.FileHandler(FULL_LOG_FILE)
+    # Simple format, as details are in the message
+    full_formatter = logging.Formatter('%(asctime)s - %(message)s')
+    # Uncomment the next line if using the custom time converter
+    # full_formatter.converter = adjusted_localtime_converter
+    full_file_handler.setFormatter(full_formatter)
+    full_logger.addHandler(full_file_handler)
+
+# --- Helper Functions ---
+
+SENSITIVE_PATHS = ["/api/login", "/api/register"]
+MAX_BODY_LOG_SIZE = 2048
+SESSION_TOKEN_NAME = "session_token" # Case-insensitive check later
+
+def is_text_content_type(content_type: str | None) -> bool:
+    """Check if the content type suggests text data."""
+    if not content_type:
+        return True # Assume text if not specified
+    content_type = content_type.lower()
+    return content_type.startswith(("text/", "application/json", "application/xml", "application/x-www-form-urlencoded"))
+
+def filter_headers(headers: dict, is_response_headers: bool = False) -> dict:
+    """Filters sensitive information like session tokens from headers."""
+    filtered = {}
+    for key, value in headers.items():
+        key_lower = key.lower()
+        if key_lower == "cookie":
+            # Filter session_token from Cookie header
+            cookies = value.split(';')
+            filtered_cookies = []
+            for cookie in cookies:
+                cookie_parts = cookie.strip().split('=', 1)
+                if len(cookie_parts) == 2 and cookie_parts[0].strip().lower() == SESSION_TOKEN_NAME:
+                    filtered_cookies.append(f"{cookie_parts[0].strip()}=[REDACTED]")
+                else:
+                    filtered_cookies.append(cookie.strip())
+            if filtered_cookies:
+                filtered[key] = '; '.join(filtered_cookies)
+        elif is_response_headers and key_lower == "set-cookie":
+             # Filter session_token from Set-Cookie header
+            if f"{SESSION_TOKEN_NAME}=" in value.lower():
+                 # Simple redaction for Set-Cookie, could be more specific
+                 filtered[key] = f"{SESSION_TOKEN_NAME}=[REDACTED]; ..." # Or parse more carefully
+            else:
+                 filtered[key] = value
+        # Add other headers to filter if needed (e.g., 'authorization')
+        # elif key_lower == 'authorization':
+        #     filtered[key] = "[REDACTED]"
+        else:
+            filtered[key] = value
+    return filtered
 @app.middleware("http")
-async def log_requests(request: Request, call_next):
-    client_ip = request.headers.get("x-real-ip", request.client.host or "unknown")
-    logger.info("", extra={
+async def log_requests_and_responses(request: Request, call_next):
+    start_time = time.time()
+    client_ip = request.headers.get("x-real-ip", request.client.host if request.client else "unknown")
+
+    # --- Basic Request Logging (Before handling) ---
+    request_logger.info("", extra={
         "client_ip": client_ip,
         "method": request.method,
         "path": request.url.path
     })
-    return await call_next(request)
+
+    # --- Full Request/Response Logging ---
+    log_entry = []
+
+    # 1. Log Request Line and Headers
+    req_headers = dict(request.headers)
+    filtered_req_headers = filter_headers(req_headers)
+    log_entry.append(f"REQUEST: {request.method} {request.url.path} HTTP/{request.scope.get('http_version', '1.1')}")
+    for key, value in filtered_req_headers.items():
+        log_entry.append(f"{key}: {value}")
+    log_entry.append("") # Blank line before body
+
+    # 2. Log Request Body (conditionally)
+    request_body = await request.body() # Read body ONCE
+
+    # Check if path requires body redaction (login/register)
+    should_redact_body = request.method == "POST" and request.url.path in SENSITIVE_PATHS
+
+    if should_redact_body:
+        log_entry.append("[Request body redacted for sensitive endpoint]")
+    elif not request_body:
+        log_entry.append("[No request body]")
+    else:
+        content_type = request.headers.get("content-type")
+        if is_text_content_type(content_type):
+            try:
+                # Decode and truncate
+                body_str = request_body.decode('utf-8', errors='replace')[:MAX_BODY_LOG_SIZE]
+                log_entry.append(body_str)
+                if len(request_body) > MAX_BODY_LOG_SIZE:
+                    log_entry.append("... [truncated]")
+            except Exception as e:
+                log_entry.append(f"[Error decoding request body as text: {e}]")
+        else:
+            log_entry.append("[Non-text request body]")
+
+    log_entry.append("-" * 20) # Separator
+
+    # --- Pass request (with potentially consumed body) to the endpoint ---
+    # Need to provide the body again if it was consumed. FastAPI/Starlette handles this
+    # reasonably well if you await request.body() before call_next.
+    # If issues arise, a more complex approach involving Request stream wrapping is needed.
+
+    # --- Call the endpoint and get response ---
+    try:
+        response = await call_next(request)
+        process_time = time.time() - start_time
+        response.headers["X-Process-Time"] = str(process_time) # Optional: Add process time header
+    except Exception as e:
+        # Log exceptions if the request handling itself fails
+        full_logger.error(f"Exception during request processing: {e}", exc_info=True)
+        # Re-raise or return a generic error response
+        raise e # Or return Response("Internal Server Error", status_code=500)
+
+    # 3. Log Response Status and Headers
+    res_headers = dict(response.headers)
+    filtered_res_headers = filter_headers(res_headers, is_response_headers=True)
+    # Try to get HTTP version from scope, default to 1.1
+    http_version = request.scope.get('http_version', '1.1')
+    log_entry.append(f"RESPONSE: HTTP/{http_version} {response.status_code}")
+    for key, value in filtered_res_headers.items():
+        log_entry.append(f"{key}: {value}")
+    log_entry.append("") # Blank line before body
+
+    # 4. Log Response Body (conditionally and carefully)
+    resp_body_content = b""
+    if isinstance(response, StreamingResponse):
+        # Consume the stream chunk by chunk to log and rebuild
+        async for chunk in response.body_iterator:
+            resp_body_content += chunk
+            if len(resp_body_content) >= MAX_BODY_LOG_SIZE:
+                break # Stop reading if limit reached
+        # Re-create the response so it can be returned
+        response = Response(content=resp_body_content, status_code=response.status_code,
+                            headers=dict(response.headers), media_type=response.media_type)
+    else:
+        # For regular Responses, body is already available
+        resp_body_content = getattr(response, 'body', b'') # Access body safely
+
+    if not resp_body_content:
+         log_entry.append("[No response body]")
+    else:
+        content_type = response.headers.get("content-type")
+        if is_text_content_type(content_type):
+            try:
+                 # Decode and truncate
+                 body_str = resp_body_content.decode('utf-8', errors='replace')[:MAX_BODY_LOG_SIZE]
+                 log_entry.append(body_str)
+                 if len(resp_body_content) > MAX_BODY_LOG_SIZE:
+                     log_entry.append("... [truncated]")
+            except Exception as e:
+                 log_entry.append(f"[Error decoding response body as text: {e}]")
+        else:
+            log_entry.append("[Non-text response body]")
+
+
+    # 5. Write the combined entry to the full log file
+    full_logger.info("\n".join(log_entry))
+
+    return response
 
 @app.websocket("/ws/game")
 async def game_ws(websocket: WebSocket):
