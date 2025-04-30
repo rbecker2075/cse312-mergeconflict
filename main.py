@@ -1,7 +1,7 @@
 import uvicorn
 import asyncio
 import json
-from fastapi import FastAPI, Request, Depends, HTTPException, status, Response, Cookie, Body, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, Depends, HTTPException, status, Response, Cookie, Body, WebSocket, WebSocketDisconnect, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -20,10 +20,16 @@ app = FastAPI(title='Merge Conflict Game', description='Authentication and Game 
 # Mount 'public/imgs' directory to serve images under '/imgs' path
 app.mount("/imgs", StaticFiles(directory="public/Imgs"), name="imgs")
 
+
 # Mount 'game/static' directory to serve game logic 
 app.mount("/game/static", StaticFiles(directory="game/static"), name="game-static")
 
 templates = Jinja2Templates(directory="game/templates")
+
+UPLOAD_DIR = "public/pictures"
+
+# Ensure the upload directory exists
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # --- Pydantic Models for Request Bodies ---
 class UserCredentials(BaseModel):
@@ -46,15 +52,453 @@ def check_password_complexity(password: str) -> bool:
 
 # --- Routes for Serving Frontend Pages ---
 
+<<<<<<< Updated upstream
+=======
+clients = {}
+active_usernames = set() # Track usernames of currently connected players
+
+# Add these at the top with other global variables
+game_start_time = None
+game_duration = 300   # 5 minutes in seconds
+food_instances = []  # List to store food positions
+
+# World dimensions based on 9x9 grid of 1920x1080 background
+bgWidth = 1920
+bgHeight = 1080
+worldWidth = bgWidth * 9
+worldHeight = bgHeight * 9
+
+def generate_food():
+    global food_instances
+    food_instances = []
+    for _ in range(1000):  # Decreased from 3000 to 1500 food items
+        food_instances.append({
+            "x": random.randint(0, worldWidth),
+            "y": random.randint(0, worldHeight),
+            "id": str(uuid4())
+        })
+
+# --- Helper Function for Delayed Respawn ---
+async def schedule_respawn(loser_id: str):
+    """Waits respawn_delay seconds, calculates new position, updates state, and sends respawn message."""
+    respawn_delay = 10 # Increased respawn delay
+    await asyncio.sleep(respawn_delay)
+    if loser_id in clients: # Check if client still connected
+        new_x = random.randint(0, worldWidth)  # Respawn randomly
+        new_y = random.randint(0, worldHeight)
+        clients[loser_id]["x"] = new_x
+        clients[loser_id]["y"] = new_y
+        # Note: Power was already reset to 1 earlier
+        
+        loser_ws = clients[loser_id]["ws"]
+        try:
+            await loser_ws.send_json({
+                "type": "respawn", 
+                "x": new_x, 
+                "y": new_y
+            })
+            # Clear the respawning flag now that they have respawned
+            clients[loser_id]["is_respawning"] = False
+            
+            # Make player invulnerable after respawn
+            clients[loser_id]["isInvulnerable"] = True
+            invulnerability_duration = 10 # Match client-side setting
+            asyncio.create_task(end_invulnerability(loser_id, invulnerability_duration))
+        except Exception as e:
+            print(f"Error sending respawn message to {loser_id}: {e}")
+
+# --- Helper Function to End Invulnerability ---
+async def end_invulnerability(player_id: str, duration: int):
+    """Waits for the duration and sets the player's invulnerability flag to False."""
+    await asyncio.sleep(duration)
+    if player_id in clients:
+        clients[player_id]["isInvulnerable"] = False
+
+OFFSET_SECONDS = -4 * 3600
+
+# Log to the project root (outside /logs)
+def adjusted_localtime_converter(timestamp):
+    """
+    Applies an offset to the timestamp and then converts using time.localtime.
+    """
+    adjusted_timestamp = timestamp + OFFSET_SECONDS
+    return time.localtime(adjusted_timestamp)
+
+# --- Your existing setup (with modifications for the formatter) ---
+
+# Log to the project root (outside /logs)
+LOG_FILE = Path("/app/host_mount/request_logs.log")  # Path in container
+LOG_FILE.parent.mkdir(exist_ok=True, parents=True)  # Ensure parent dir exists
+
+# Get the specific logger instance
+logger = logging.getLogger("request_logger")
+logger.setLevel(logging.INFO)
+
+# Prevent adding multiple handlers if this code runs multiple times (e.g., in a test)
+if not logger.handlers:
+    # Configure file handler
+    file_handler = logging.FileHandler(LOG_FILE)
+
+    # 1. Create the standard formatter instance with your desired format string
+    log_format = '%(asctime)s - %(client_ip)s - %(method)s - %(path)s'
+    formatter = logging.Formatter(log_format) # Removed datefmt, using default
+
+    # 2. *** Set the custom converter on the formatter instance ***
+    formatter.converter = adjusted_localtime_converter
+
+    # 3. Set the modified formatter on the handler
+    file_handler.setFormatter(formatter)
+
+    # Add the handler to the logger
+    logger.addHandler(file_handler)
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    client_ip = request.headers.get("x-real-ip", request.client.host or "unknown")
+    logger.info("", extra={
+        "client_ip": client_ip,
+        "method": request.method,
+        "path": request.url.path
+    })
+    return await call_next(request)
+
+@app.websocket("/ws/game")
+async def game_ws(websocket: WebSocket):
+    global game_start_time, food_instances, active_usernames
+    
+    # --- Check for existing connection for logged-in users ---
+    session_token = websocket.cookies.get("session_token")
+    username = None
+    if session_token:
+        username = await get_current_user(session_token)
+        if username in active_usernames:
+            # User is already connected, reject this new connection
+            await websocket.accept() # Accept briefly to send the message
+            await websocket.send_json({"type": "error", "message": "Already connected in another tab."})
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="User already connected")
+            print(f"Rejected connection for user {username}: already connected.")
+            return # Stop further execution for this connection
+    # --- End check ---
+
+    # Start the game timer if this is the first connection
+    if game_start_time is None and len(clients) == 0:
+        game_start_time = time.time()
+        generate_food()  # Generate initial food
+    
+    await websocket.accept()
+    player_id = str(uuid4())
+    
+    # Get the session token from cookies (already done above, reuse username)
+    # session_token = websocket.cookies.get("session_token")
+    # username = None
+    # if session_token:
+    #     username = await get_current_user(session_token)
+
+    # Add user to active set if logged in
+    if username:
+        active_usernames.add(username)
+
+    clients[player_id] = {
+        "ws": websocket, 
+        "x": worldWidth / 2,  # Spawn in center
+        "y": worldHeight / 2,  # Spawn in center
+        "power": 1, 
+        "username": username,
+        "is_respawning": False,
+        "isInvulnerable": True # Player starts invulnerable
+    }
+
+    # Start invulnerability timer for new player
+    invulnerability_duration = 10 # Match client-side setting
+    asyncio.create_task(end_invulnerability(player_id, invulnerability_duration))
+
+    # Send back the ID, game time remaining, and initial food positions
+    time_remaining = max(0, game_duration - (time.time() - game_start_time)) if game_start_time else game_duration
+    await websocket.send_json({
+        "type": "id", 
+        "id": player_id,
+        "time_remaining": time_remaining,
+        "food": food_instances
+    })
+
+    try:
+        while True:
+            # Check if game time is up
+            current_time = time.time()
+            time_remaining = max(0, game_duration - (current_time - game_start_time)) if game_start_time else game_duration
+            
+            if time_remaining <= 0 and game_start_time is not None:
+                # Game over - determine winner
+                winner = max(clients.items(), key=lambda x: x[1]["power"])
+                winner_username = winner[1]["username"] or "Guest"
+                winner_display_duration = 5 # How long to show winner name
+                reset_countdown_duration = 10 # How long the "New game starting" countdown lasts
+                
+                # Send game over message to all clients
+                for client in clients.values():
+                    try:
+                        await client["ws"].send_json({
+                            "type": "game_over",
+                            "winner": winner_username
+                        })
+                    except:
+                        print(f"Error sending game_over message to a client.")
+                        pass # Ignore errors for disconnected clients
+                
+                # --- Make all players invulnerable during reset countdown --- 
+                for pid in clients:
+                    if pid in clients: # Check they didn't disconnect right now
+                        clients[pid]["isInvulnerable"] = True 
+                        clients[pid]["is_respawning"] = False # Ensure this is false too
+                # --- End Invulnerability Set --- 
+
+                # Wait briefly for winner display
+                await asyncio.sleep(winner_display_duration)
+
+                # --- Send pre-reset countdown trigger --- 
+                await broadcast_message({
+                    "type": "pre_reset_timer",
+                    "duration": reset_countdown_duration
+                })
+                # --- End pre-reset trigger ---
+
+                # Wait for the countdown duration before actually resetting
+                await asyncio.sleep(reset_countdown_duration)
+                
+                # Reset game state
+                game_start_time = time.time()  # Reset timer
+                generate_food()  # Generate new food
+                invulnerability_duration = 10 # Duration for post-reset invulnerability
+                for client_id in clients:
+                    clients[client_id]["power"] = 1  # Reset all powers to 1
+                    clients[client_id]["x"] = random.randint(0, worldWidth)  # Random respawn
+                    clients[client_id]["y"] = random.randint(0, worldHeight)
+                    clients[client_id]["is_respawning"] = False # Ensure respawn flag is clear
+                    clients[client_id]["isInvulnerable"] = True # Grant invulnerability
+                    # Start timer to end invulnerability
+                    asyncio.create_task(end_invulnerability(client_id, invulnerability_duration))
+                
+                # Send reset message to all clients
+                for client in clients.values():
+                    try:
+                        await client["ws"].send_json({
+                            "type": "game_reset",
+                            "time_remaining": game_duration,
+                            "food": food_instances
+                        })
+                    except:
+                        pass
+
+            data = await websocket.receive_json()
+            clients[player_id]["x"] = data["x"]
+            clients[player_id]["y"] = data["y"]
+
+            # Check for food collisions
+            player_x = clients[player_id]["x"]
+            player_y = clients[player_id]["y"]
+            food_to_remove = []
+            
+            for food in food_instances:
+                distance = ((player_x - food["x"]) ** 2 + (player_y - food["y"]) ** 2) ** 0.5
+                if distance < 50:  # Increased from 30 to 50 for food collection radius
+                    food_to_remove.append(food)
+                    clients[player_id]["power"] += 1
+            
+            # Remove collected food and notify all clients
+            if food_to_remove:
+                for food in food_to_remove:
+                    food_instances.remove(food)
+                # Send food update to all clients
+                for client in clients.values():
+                    try:
+                        await client["ws"].send_json({
+                            "type": "food_update",
+                            "removed_food": [f["id"] for f in food_to_remove]
+                        })
+                    except:
+                        pass
+
+            # Check for player collisions and update power
+            # Store players to process collisions for to avoid modifying during iteration
+            current_player_ids = list(clients.keys())
+            processed_collisions = set() # Avoid double checks
+
+            for p1_id in current_player_ids:
+                if p1_id not in clients or p1_id in processed_collisions: # Check if player still exists
+                    continue
+                
+                for p2_id in current_player_ids:
+                    if p1_id == p2_id or p2_id not in clients or p2_id in processed_collisions: # Check if other player exists and not self
+                        continue
+
+                    # --- Check if either player is currently respawning --- 
+                    if clients[p1_id].get("is_respawning", False) or clients[p2_id].get("is_respawning", False):
+                        continue # Skip collision check if one is respawning
+
+                    # --- Check if either player is invulnerable ---
+                    if clients[p1_id].get("isInvulnerable", False) or clients[p2_id].get("isInvulnerable", False):
+                        continue # Skip collision check if one is invulnerable
+                    # --- End Checks ---
+
+                    p1 = clients[p1_id]
+                    p2 = clients[p2_id]
+
+                    distance = ((p1["x"] - p2["x"]) ** 2 + (p1["y"] - p2["y"]) ** 2) ** 0.5
+
+                    if distance < 75: # Collision detected
+                        processed_collisions.add(p1_id)
+                        processed_collisions.add(p2_id)
+
+                        winner_id, loser_id = None, None
+                        p1_power = p1["power"]
+                        p2_power = p2["power"]
+
+                        if p1_power > p2_power:
+                            winner_id, loser_id = p1_id, p2_id
+                        elif p2_power > p1_power:
+                            winner_id, loser_id = p2_id, p1_id
+                        else: # Tie
+                            chosen_winner = random.choice([p1_id, p2_id])
+                            winner_id = chosen_winner
+                            loser_id = p2_id if chosen_winner == p1_id else p1_id
+
+                        # Process the win/loss if winner and loser are determined
+                        if winner_id and loser_id:
+                            winner = clients[winner_id]
+                            loser = clients[loser_id]
+                            
+                            # Add power (only add if loser is not already at 1, prevents negative power)
+                            power_gain = loser["power"] if loser["power"] > 1 else 1
+                            winner["power"] += power_gain
+                            
+                            # Reset loser power *immediately* in state
+                            loser["power"] = 1
+                            loser["is_respawning"] = True # <<< SET RESPAWNING FLAG
+                            
+                            # Send "eaten" message to loser
+                            try:
+                                loser_ws = loser["ws"]
+                                asyncio.create_task(loser_ws.send_json({"type": "eaten"}))
+                            except Exception as e:
+                                print(f"Error sending 'eaten' message to {loser_id}: {e}")
+                            
+                            # Schedule the respawn task for the loser
+                            asyncio.create_task(schedule_respawn(loser_id))
+
+                        break # Move to next p1_id after processing a collision for p1
+
+            # Prepare data for all players
+            # Gather current state safely
+            current_clients_items = list(clients.items()) # Copy items to prevent modification issues
+            state = {
+                "type": "players",
+                "players": {
+                    pid: {
+                        "x": info["x"],
+                        "y": info["y"],
+                        "power": info["power"],
+                        "username": info["username"],
+                        "is_respawning": info.get("is_respawning", False),
+                        "isInvulnerable": info.get("isInvulnerable", False)
+                    }
+                    for pid, info in current_clients_items
+                    if "ws" in info # Ensure basic client structure exists
+                },
+                "time_remaining": time_remaining,
+                "food": food_instances
+            }
+            
+            # Safely broadcast state to all *currently connected* clients
+            clients_to_remove = []
+            for pid, client in current_clients_items:
+                try:
+                    if "ws" in client:
+                        await client["ws"].send_json(state)
+                except (WebSocketDisconnect, RuntimeError) as e: # Catch disconnects and runtime errors (like sending after close)
+                    print(f"Client {pid} disconnected during broadcast or send error: {e}")
+                    clients_to_remove.append(pid)
+            
+            # Clean up clients that caused errors during broadcast
+            for pid in clients_to_remove:
+                if pid in clients:
+                    disconnected_username = clients[pid].get("username")
+                    if disconnected_username:
+                        active_usernames.discard(disconnected_username)
+                    del clients[pid]
+                    # No need to broadcast removal here, as they already disconnected
+
+    except WebSocketDisconnect:
+        # Player disconnecting logic: remove the user from active_usernames and clients
+        disconnected_username = clients[player_id].get("username")
+        if disconnected_username:
+            active_usernames.discard(disconnected_username)
+        clients.pop(player_id, None)
+
+
+# --- Helper Function to Broadcast Messages --- 
+async def broadcast_message(message: dict):
+    """Sends a JSON message to all currently connected clients."""
+    # Create a copy of client websockets to iterate over, avoiding modification issues
+    current_websockets = [info["ws"] for info in clients.values() if "ws" in info]
+    for ws in current_websockets:
+        try:
+            await ws.send_json(message)
+        except (WebSocketDisconnect, RuntimeError) as e:
+            # Handle potential errors silently during broadcast, main loop handles cleanup
+            print(f"Error during broadcast to a client: {e}")
+            pass
+# --- End Broadcast Helper ---
+
+@app.post("/upload")
+async def upload_file(file: UploadFile):
+    try:
+        # Ensure the 'public/pictures' directory exists
+        os.makedirs("public/pictures", exist_ok=True)
+
+        # Read the file content
+        file_data = await file.read()
+        print(f"File size: {len(file_data)} bytes")  # Debugging file size
+        print(f"File content preview: {file_data[:100]}")  # Debugging file content preview
+
+        # Set the static file path in the 'public/pictures' directory
+        file_path = os.path.join("public/pictures", file.filename)
+
+        # Write the file to disk
+        with open(file_path, "wb") as f:
+            f.write(file_data)
+
+        print(f"File successfully uploaded to {file_path}")
+
+        # Return the static file path as a response
+        return {"file_path": f"pictures/{file.filename}"}
+    except Exception as e:
+        # Return an error response if an exception occurs
+        print(f"Error: {str(e)}")  # Debugging errors
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
+>>>>>>> Stashed changes
 @app.get("/", response_class=FileResponse)
 async def serve_home_page():
     # Serve the main index page
     # Check if file exists? Add error handling if needed.
     return FileResponse("public/index.html")
 
+<<<<<<< Updated upstream
 class Pellet(BaseModel):
     x: float
     y: float
+=======
+@app.get("/profile", response_class=FileResponse)
+async def serve_home_page():
+    # Serve the main index page
+    # Check if file exists? Add error handling if needed.
+    return FileResponse("public/Profile.html")
+
+@app.get("/play", response_class=HTMLResponse)
+async def game_page(request: Request):
+    return templates.TemplateResponse("game.html", {"request": request})
+>>>>>>> Stashed changes
 
 @app.get("/play", response_class=HTMLResponse)
 def play_game():

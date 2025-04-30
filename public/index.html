@@ -34,6 +34,18 @@
             cursor: pointer;
         }
 
+        .profile-button {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background-color: #9b59b6;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            display: none; /* Hide initially */
+        }
+
         @keyframes background-move {
             0% { background-position: 0 0, 0 0; }
             100% {
@@ -130,6 +142,42 @@
             color: white;
             z-index: 1;
         }
+<<<<<<< Updated upstream
+=======
+
+        /* How to Play Section Styles */
+        .how-to-play {
+            background: linear-gradient(to bottom, rgba(80, 40, 110, 0.8), rgba(120, 60, 150, 0.7));
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            max-width: 80%;
+            margin-top: 20px;
+            margin-left: 50px;
+        }
+
+        .how-to-play h2 {
+            margin-top: 0;
+            color: #eee;
+        }
+
+        .how-to-play p {
+            margin-bottom: 10px;
+            color: #ccc;
+        }
+
+        .how-to-play ul {
+            margin-bottom: 10px;
+            color: #ccc;
+            text-align: center;
+            padding-left: 0;
+            list-style-position: inside;
+        }
+
+        .how-to-play li {
+            margin-bottom: 10px;
+        }
+>>>>>>> Stashed changes
     </style>
 </head>
 <body>
@@ -137,11 +185,14 @@
         <!-- Login/Register buttons OR Welcome msg/Logout button will be dynamically added here -->
     </div>
 
-    <!-- Removed input-container div -->
+    <div class="profile-button" id="profile-button">
+        <a href="/profile">PROFILE</a>
+    </div>
 
     <script>
         async function checkAuthStatus() {
             const authButtons = document.getElementById('auth-buttons');
+            const profileButton = document.getElementById('profile-button');
             authButtons.innerHTML = ''; // Clear previous buttons/text
 
             try {
@@ -149,33 +200,49 @@
                 const data = await response.json();
 
                 if (data.logged_in) {
+                    // Show PROFILE button
+                    profileButton.style.display = 'block';
+
                     // User is logged in
                     const welcomeMessage = document.createElement('span');
                     welcomeMessage.textContent = `Welcome, ${data.username}!`;
-                    welcomeMessage.style.fontSize = '1.2em'; // Optional: Style the welcome message
-                    welcomeMessage.style.marginBottom = '10px'; // Add some space below the message
+                    welcomeMessage.style.fontSize = '1.2em';
+                    welcomeMessage.style.marginBottom = '10px';
                     authButtons.appendChild(welcomeMessage);
 
                     const logoutLink = document.createElement('a');
                     logoutLink.href = '/logout';
                     const logoutButtonImage = document.createElement('img');
+<<<<<<< Updated upstream
                     logoutButtonImage.src = 'imgs/newlogoutbutton1.png'; // Use the new logout button image
+=======
+                    logoutButtonImage.src = 'pictures/newlogoutbutton1.png';
+>>>>>>> Stashed changes
                     logoutButtonImage.alt = 'Logout';
                     logoutButtonImage.classList.add('button-image');
                     logoutLink.appendChild(logoutButtonImage);
                     authButtons.appendChild(logoutLink);
 
-                    // Create a new container for the centered Start Game button
+                    // Game Button Container
                     const gameButtonContainer = document.createElement('div');
                     gameButtonContainer.style.position = 'absolute';
+<<<<<<< Updated upstream
                     gameButtonContainer.style.top = '50%';
                     gameButtonContainer.style.left = '50%';
                     gameButtonContainer.style.transform = 'translate(-50%, -50%)';
                     gameButtonContainer.style.textAlign = 'center'; // Center button within the container
+=======
+                    gameButtonContainer.style.top = '65%';
+                    gameButtonContainer.style.left = '50%';
+                    gameButtonContainer.style.transform = 'translate(-50%, -50%)';
+                    gameButtonContainer.style.textAlign = 'center';
+                    gameButtonContainer.id = 'game-button-container';
+>>>>>>> Stashed changes
 
-                    // Create the Start Game button
+                    // Start Game Button
                     const startGameButton = document.createElement('button');
                     startGameButton.textContent = 'Start Game';
+<<<<<<< Updated upstream
                     startGameButton.classList.add('btn', 'btn-border-reveal'); // Reuse existing button style
                     // Removed margin-top as centering is handled by the container
                     startGameButton.addEventListener('click', () => {
@@ -193,34 +260,81 @@
                     if (existingAuthContainer) {
                         existingAuthContainer.remove();
                     }
+=======
+                    startGameButton.id = 'start-game-btn';
+                    startGameButton.classList.add('btn', 'btn-border-reveal');
+                    startGameButton.addEventListener('click', async (event) => {
+                        event.preventDefault();
+                        const errorDiv = document.getElementById('start-game-error');
+                        errorDiv.textContent = '';
+
+                        try {
+                            const statusResponse = await fetch('/api/game/status');
+                            if (!statusResponse.ok) {
+                                throw new Error('Failed to check game status');
+                            }
+                            const statusData = await statusResponse.json();
+
+                            if (statusData.in_game) {
+                                errorDiv.textContent = 'Error: You are already in a game session in another tab.';
+                            } else {
+                                window.location.href = '/play';
+                            }
+                        } catch (error) {
+                            console.error('Error checking game status:', error);
+                            errorDiv.textContent = 'Error checking game status. Please try again.';
+                        }
+                    });
+
+                    gameButtonContainer.appendChild(startGameButton);
+
+                    // Error Message Placeholder
+                    const errorMessageDiv = document.createElement('div');
+                    errorMessageDiv.id = 'start-game-error';
+                    errorMessageDiv.style.color = 'red';
+                    errorMessageDiv.style.marginTop = '10px';
+                    errorMessageDiv.style.fontWeight = 'bold';
+                    gameButtonContainer.appendChild(errorMessageDiv);
+
+                    document.body.appendChild(gameButtonContainer);
+
+                    // How to Play Section
+                    const howToPlayDiv = document.createElement('div');
+                    howToPlayDiv.classList.add('how-to-play');
+                    howToPlayDiv.innerHTML = `
+                        <h2>How to Play</h2>
+                        <p><strong>Objective: Become the strongest planet!</strong></p>
+                        <ul>
+                            <li>Use <strong>W, A, S, D</strong> keys to move your planet.</li>
+                            <li>Eat the small, glowing stars scattered around to grow stronger.</li>
+                            <li>Collide with smaller players or equal sized players to steal their strength.</li>
+                        </ul>
+                    `;
+                    gameButtonContainer.appendChild(howToPlayDiv);
+>>>>>>> Stashed changes
 
                 } else {
-                    // User is not logged in
                     authButtons.innerHTML = ''; // Ensure top-right container is cleared
 
-                    // Remove any existing centered game button container if present
                     const existingGameContainer = document.querySelector('div#game-button-container');
                     if (existingGameContainer) {
                         existingGameContainer.remove();
                     }
 
-                    // Remove any existing centered auth button container before creating a new one
                     let authButtonContainer = document.querySelector('div#auth-button-container');
                     if (authButtonContainer) {
                         authButtonContainer.remove();
                     }
 
-                    // Create a new centered container for Login/Register buttons
                     authButtonContainer = document.createElement('div');
-                    authButtonContainer.id = 'auth-button-container'; // Add an ID for easier selection
+                    authButtonContainer.id = 'auth-button-container';
                     authButtonContainer.style.position = 'absolute';
                     authButtonContainer.style.top = '50%';
                     authButtonContainer.style.left = '50%';
                     authButtonContainer.style.transform = 'translate(-50%, -50%)';
-                    authButtonContainer.style.display = 'flex'; // Arrange buttons horizontally
-                    authButtonContainer.style.gap = '20px'; // Add space between buttons
+                    authButtonContainer.style.display = 'flex';
+                    authButtonContainer.style.gap = '20px';
 
-                    // Create Login Button
                     const loginLink = document.createElement('a');
                     loginLink.href = '/login';
                     const loginButtonImage = document.createElement('img');
@@ -229,7 +343,6 @@
                     loginButtonImage.classList.add('button-image');
                     loginLink.appendChild(loginButtonImage);
 
-                    // Create Register Button
                     const registerLink = document.createElement('a');
                     registerLink.href = '/register';
                     const registerButtonImage = document.createElement('img');
@@ -238,23 +351,22 @@
                     registerButtonImage.classList.add('button-image');
                     registerLink.appendChild(registerButtonImage);
 
-                    // Add buttons to the centered container
                     authButtonContainer.appendChild(loginLink);
                     authButtonContainer.appendChild(registerLink);
 
-                    // Add the centered container to the body
                     document.body.appendChild(authButtonContainer);
                 }
             } catch (error) {
                 console.error('Error checking auth status:', error);
-                // Optionally display an error message to the user in the authButtons div
                 authButtons.textContent = 'Error loading user status.';
             }
         }
 
-        // Removed the playButton logic as the button is removed
-
         window.onload = checkAuthStatus;
     </script>
+<<<<<<< Updated upstream
+=======
+
+>>>>>>> Stashed changes
 </body>
 </html>

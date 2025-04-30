@@ -1,0 +1,10 @@
+2025-04-30 03:18:55,319 - 172.20.0.1 - GET - /
+2025-04-30 03:18:55,406 - 172.20.0.1 - GET - /pictures/Home_Background.jpg
+2025-04-30 03:18:55,438 - 172.20.0.1 - GET - /favicon.ico
+2025-04-30 03:18:55,445 - 172.20.0.1 - GET - /auth/status
+2025-04-30 03:18:55,480 - 172.20.0.1 - GET - /pictures/registerbutton.png
+2025-04-30 03:18:55,481 - 172.20.0.1 - GET - /pictures/loginbutton.png
+2025-04-30 03:19:05,766 - 172.20.0.1 - GET - /login
+2025-04-30 03:19:05,795 - 172.20.0.1 - GET - /pictures/login_background.jpg
+2025-04-30 03:19:05,799 - 172.20.0.1 - GET - /pictures/back.png
+2025-04-30 03:19:12,582 - 172.20.0.1 - POST - /api/login
