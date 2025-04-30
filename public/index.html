@@ -163,6 +163,100 @@
         .how-to-play li {
             margin-bottom: 10px; /* Increased spacing */
         }
+
+        /* Leaderboard Modal Styles */
+        .modal {
+            display: none; /* Hidden by default */
+            position: fixed; /* Stay in place */
+            z-index: 1000; /* Sit on top */
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto; /* Enable scroll if needed */
+            background-color: rgba(0,0,0,0.6); /* Black w/ opacity */
+            justify-content: center; /* Center horizontally */
+            align-items: center; /* Center vertically */
+        }
+        .modal-content {
+            background-color: #2c1e3e; /* Dark purple background */
+            color: #eee; /* Light text */
+            margin: auto; /* Centered */
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 500px; /* Max width */
+            border-radius: 10px;
+            position: relative;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+        .close-button {
+            color: #aaa;
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close-button:hover,
+        .close-button:focus {
+            color: #fff;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        #leaderboard-list {
+            list-style: none;
+            padding: 0;
+            margin-top: 15px;
+        }
+        #leaderboard-list li {
+            background-color: #4a3366; /* Slightly lighter purple */
+            margin-bottom: 8px;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 1.1em;
+        }
+        #leaderboard-list li:nth-child(odd) {
+            background-color: #5a4376; /* Even lighter for odd items */
+        }
+        #leaderboard-list .rank {
+            font-weight: bold;
+            margin-right: 10px;
+            color: #ffd700; /* Gold color for rank */
+        }
+        /* Achievement Modal List Styles */
+        #achievements-list {
+            list-style: none;
+            padding: 0;
+            margin-top: 15px;
+        }
+        #achievements-list li {
+            margin-bottom: 10px;
+            padding: 12px;
+            border-radius: 5px;
+            border-left: 5px solid;
+            transition: background-color 0.3s ease;
+        }
+        #achievements-list li.unlocked {
+            background-color: rgba(74, 163, 111, 0.2); /* Light green background */
+            border-left-color: #4ac16f; /* Green border */
+            color: #c8f7d8;
+        }
+        #achievements-list li.locked {
+            background-color: rgba(100, 100, 100, 0.2); /* Light gray background */
+            border-left-color: #646464; /* Gray border */
+            color: #aaa;
+        }
+        #achievements-list .ach-name {
+            font-weight: bold;
+            display: block;
+            margin-bottom: 4px;
+            font-size: 1.1em;
+        }
+        #achievements-list .ach-desc {
+            font-size: 0.95em;
+        }
     </style>
 </head>
 <body>
@@ -206,12 +300,17 @@
                     gameButtonContainer.style.transform = 'translate(-50%, -50%)';
                     gameButtonContainer.style.textAlign = 'center'; // Center button within the container
                     gameButtonContainer.id = 'game-button-container'; // Add an ID for easy selection
+                    gameButtonContainer.style.display = 'flex'; // Use flexbox for centering items
+                    gameButtonContainer.style.flexDirection = 'column'; // Stack items vertically
+                    gameButtonContainer.style.alignItems = 'center'; // Center items horizontally
 
                     // Create the Start Game button
                     const startGameButton = document.createElement('button');
                     startGameButton.textContent = 'Start Game';
                     startGameButton.id = 'start-game-btn'; // Add ID to button
                     startGameButton.classList.add('btn', 'btn-border-reveal'); // Reuse existing button style
+                    // *** Add Icon to Start Game Button ***
+                    startGameButton.innerHTML = 'Start Game <span role="img" aria-label="rocket">🚀</span>';
                     
                     // *** Add event listener for pre-check ***
                     startGameButton.addEventListener('click', async (event) => {
@@ -241,6 +340,96 @@
                     
                     // Add button to the centered container
                     gameButtonContainer.appendChild(startGameButton);
+
+                    // *** Create the Leaderboards button ***
+                    const leaderboardButton = document.createElement('button');
+                    leaderboardButton.id = 'leaderboard-btn';
+                    leaderboardButton.classList.add('btn', 'btn-border-reveal'); // Reuse style
+                    leaderboardButton.style.marginTop = '15px'; // Space below start button
+                    leaderboardButton.innerHTML = 'Leaderboards <span role="img" aria-label="trophy">🏆</span>'; // Add text and icon
+                    gameButtonContainer.appendChild(leaderboardButton);
+
+                    // *** Create the Achievements button ***
+                    const achievementsButton = document.createElement('button');
+                    achievementsButton.id = 'achievements-btn';
+                    achievementsButton.classList.add('btn', 'btn-border-reveal'); // Reuse style
+                    achievementsButton.style.marginTop = '15px'; // Space below leaderboard button
+                    achievementsButton.innerHTML = 'Achievements <span role="img" aria-label="medal">🏅</span>'; // Add text and icon
+                    gameButtonContainer.appendChild(achievementsButton);
+
+                    // *** Add event listener for Leaderboards button ***
+                    leaderboardButton.addEventListener('click', async () => {
+                        const modal = document.getElementById('leaderboard-modal');
+                        const list = document.getElementById('leaderboard-list');
+                        list.innerHTML = '<li>Loading...</li>'; // Show loading indicator
+                        modal.style.display = 'flex'; // Show modal
+
+                        try {
+                            const response = await fetch('/api/leaderboard');
+                            if (!response.ok) {
+                                throw new Error(`HTTP error! status: ${response.status}`);
+                            }
+                            const data = await response.json();
+
+                            list.innerHTML = ''; // Clear loading/previous list
+                            if (data.length === 0) {
+                                list.innerHTML = '<li>No leaderboard data yet!</li>';
+                            } else {
+                                data.forEach((player, index) => {
+                                    const listItem = document.createElement('li');
+                                    listItem.innerHTML = `
+                                        <span class="rank">#${index + 1}</span> 
+                                        ${escapeHtml(player.username)} - ${player.total_score} points
+                                    `;
+                                    list.appendChild(listItem);
+                                });
+                            }
+                        } catch (error) {
+                            console.error('Error fetching leaderboard:', error);
+                            list.innerHTML = '<li>Error loading leaderboard. Please try again later.</li>';
+                        }
+                    });
+
+                    // *** Add event listener for Achievements button ***
+                    achievementsButton.addEventListener('click', async () => {
+                        // For now, just open the modal. Fetching data will be added later.
+                        const modal = document.getElementById('achievements-modal');
+                        const list = document.getElementById('achievements-list');
+                        list.innerHTML = '<li>Loading achievements...</li>'; // Show loading
+                        modal.style.display = 'flex';
+
+                        try {
+                            const response = await fetch('/api/achievements');
+                            if (!response.ok) {
+                                if (response.status === 401) {
+                                    throw new Error('Please log in to view achievements.');
+                                } else {
+                                    throw new Error(`HTTP error! status: ${response.status}`);
+                                }
+                            }
+                            const data = await response.json();
+
+                            list.innerHTML = ''; // Clear loading/previous list
+                            if (data.length === 0) {
+                                list.innerHTML = '<li>No achievements defined yet.</li>';
+                            } else {
+                                data.sort((a, b) => b.unlocked - a.unlocked); // Show unlocked first
+
+                                data.forEach(achievement => {
+                                    const listItem = document.createElement('li');
+                                    listItem.classList.add(achievement.unlocked ? 'unlocked' : 'locked');
+                                    listItem.innerHTML = `
+                                        <span class="ach-name">${escapeHtml(achievement.name)} ${achievement.unlocked ? '🏆' : '🔒'}</span>
+                                        <span class="ach-desc">${escapeHtml(achievement.description)}</span>
+                                    `;
+                                    list.appendChild(listItem);
+                                });
+                            }
+                        } catch (error) {
+                            console.error('Error fetching achievements:', error);
+                            list.innerHTML = `<li>Error: ${escapeHtml(error.message)}</li>`;
+                        }
+                    });
                     
                     // *** Add error message placeholder ***
                     const errorMessageDiv = document.createElement('div');
@@ -331,12 +520,89 @@
             }
         }
 
+        // Function to escape HTML special characters
+        function escapeHtml(unsafe) {
+            if (!unsafe) return '';
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
         // Removed the playButton logic as the button is removed
 
-        window.onload = checkAuthStatus;
+        window.onload = function() {
+            checkAuthStatus();
+
+            // Add event listeners for the modal HERE, after the DOM is loaded
+            const modal = document.getElementById('leaderboard-modal');
+            const closeBtn = document.getElementById('close-leaderboard');
+            // *** Add event listeners for the achievements modal ***
+            const achievementsModal = document.getElementById('achievements-modal');
+            const closeAchievementsBtn = document.getElementById('close-achievements');
+
+            if (modal && closeBtn) {
+                closeBtn.onclick = function() {
+                    modal.style.display = "none";
+                }
+
+                // Close modal if user clicks outside the modal content
+                window.onclick = function(event) {
+                    if (event.target == modal) {
+                        modal.style.display = "none";
+                    }
+                }
+            } else {
+                console.error("Could not find leaderboard modal elements on load.");
+            }
+
+            // *** Add event listeners for achievements modal ***
+            if (achievementsModal && closeAchievementsBtn) {
+                closeAchievementsBtn.onclick = function() {
+                    achievementsModal.style.display = "none";
+                }
+
+                // Close achievements modal if user clicks outside the modal content
+                window.addEventListener('click', function(event) { // Use addEventListener for potentially multiple modals
+                    if (event.target == achievementsModal) {
+                        achievementsModal.style.display = "none";
+                    }
+                });
+            } else {
+                console.error("Could not find achievements modal elements on load.");
+            }
+        };
     </script>
 
     <!-- Removed static How to Play Section -->
+
+    <!-- Leaderboard Modal -->
+    <div id="leaderboard-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-button" id="close-leaderboard">&times;</span>
+            <h2>Top Players (All Time)</h2>
+            <ul id="leaderboard-list">
+                <!-- Leaderboard items will be populated here -->
+            </ul>
+        </div>
+    </div>
+
+    <!-- Achievements Modal -->
+    <div id="achievements-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-button" id="close-achievements">&times;</span>
+            <h2>My Achievements</h2>
+            <ul id="achievements-list">
+                <!-- Achievement items will be populated here -->
+                <!-- Example structure:
+                <li class="unlocked">Achievement Name - Description</li>
+                <li class="locked">Locked Achievement Name - Description</li>
+                -->
+            </ul>
+        </div>
+    </div>
 
 </body>
 </html>

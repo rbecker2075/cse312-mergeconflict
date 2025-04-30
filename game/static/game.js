@@ -442,20 +442,76 @@ function handleSocketMessage(event) {
   }
   // --- End Message Handlers ---
 
-  // --- New Game Timer Update ---
-  if (newGameTimerText && newGameTimerText.active && newGameEndTime > 0) {
-    // Text position is now fixed via scrollFactor(0) in showNewGameTimer
-  } else if (newGameTimerText) {
-      // If text object exists but shouldn't (e.g., endTime <= 0), ensure it's hidden/removed
-      console.warn(`UPDATE LOOP: newGameTimerText exists unexpectedly (endTime=${newGameEndTime}). Forcing hide.`);
-      newGameTimerText.destroy();
-      newGameTimerText = null; 
+  // --- Achievement Handler --- 
+  else if (data.type === "achievement_unlocked") { 
+    // New achievement unlocked! Display notification.
+    console.log("Achievement Unlocked:", data.achievement);
+    displayAchievementNotification(scene, data.achievement.name, data.achievement.description);
   }
-  // --- End New Game Timer --- 
+
+  // Update local player's power text and timer position
+  playerPowerText.setPosition(player.x, player.y);
+  timerText.setPosition(player.x, player.y + 30);
+  // Update local username text position
+  if (localUsernameText) {
+    localUsernameText.setPosition(player.x, player.y - 30);
+  }
+
+  // --- Invulnerability Update Logic ---
+  if (isInvulnerable) {
+    const remainingTime = (invulnerabilityEndTime - time) / 1000;
+    if (remainingTime > 0 && !isIntermission) {
+      if (invulnerabilityText) {
+        invulnerabilityText.setText(`Invulnerable: ${remainingTime.toFixed(1)}s`);
+        updateInvulnerabilityTextPosition(); // Keep text positioned correctly
+        if (!invulnerabilityText.visible) invulnerabilityText.setVisible(true); // Ensure visible
+      }
+      // Optional: Add visual effect like blinking
+      player.setAlpha(0.5 + Math.abs(Math.sin(time / 150)) * 0.4); // Simple blink effect
+    } else { // Time ended OR isIntermission is true
+      // Hide invulnerability text if it exists
+      if (invulnerabilityText && invulnerabilityText.visible) {
+          invulnerabilityText.setVisible(false);
+      }
+      // End invulnerability state if time is up
+      if (remainingTime <= 0) {
+        endInvulnerability();
+      }
+    }
+  }
+  // --- End Invulnerability Update Logic ---
+
+  // --- Respawn Countdown Message Update ---
+  if (respawnMessageText && respawnEndTime > 0) {
+    const scene = game.scene.scenes[0];
+
+    // NO LONGER UPDATING POSITION HERE - text stays at death location
+
+    // Update countdown text
+    const remainingSeconds = Math.max(0, Math.ceil((respawnEndTime - time) / 1000));
+    respawnMessageText.setText(`You've been eaten! Respawning in ${remainingSeconds} seconds`);
+
+    // Fallback removal if time expires before respawn message
+    if (time >= respawnEndTime) {
+        respawnMessageText.destroy();
+        respawnMessageText = null;
+        respawnEndTime = 0;
+    }
+  }
+  // --- End Respawn Countdown ---
 
   // Ensure player visibility matches state
   if (player && player.visible !== playerVisible) {
       player.setVisible(playerVisible);
+  }
+
+  // Update New Game Timer text if active
+  if (newGameTimerText && newGameTimerText.active && newGameEndTime > 0) {
+    // Text position is now fixed via scrollFactor(0) in showNewGameTimer
+  } else if (newGameTimerText) {
+    // If text object exists but shouldn't (e.g., endTime <= 0), ensure it's hidden/removed
+    newGameTimerText.destroy();
+    newGameTimerText = null;
   }
 }
 
@@ -661,6 +717,79 @@ function updateInvulnerabilityTextPosition() {
 }
 // --- End Invulnerability Functions ---
 
+// --- Achievement Notification Function ---
+function displayAchievementNotification(scene, name, description) {
+    if (!scene) return;
+
+    const notificationY = 50; // Position from the top
+    const displayDuration = 5000; // 5 seconds
+
+    // Create a container for the notification text
+    const notificationGroup = scene.add.group();
+
+    // Background rectangle
+    const bgRect = scene.add.graphics(); // Use graphics for flexible background
+    bgRect.fillStyle(0x1a0f26, 0.85); // Dark semi-transparent purple
+    bgRect.lineStyle(2, 0xffd700, 1); // Gold border
+    // Dimensions will be set after text is created
+
+    // Achievement Name Text
+    const nameText = scene.add.text(0, 0, `🏆 ${name} 🏆`, { // Add trophy icons
+        fontSize: '18px',
+        color: '#ffd700', // Gold color
+        align: 'center',
+        fontStyle: 'bold'
+    });
+    nameText.setOrigin(0.5, 0);
+
+    // Achievement Description Text
+    const descText = scene.add.text(0, 0, description, {
+        fontSize: '14px',
+        color: '#ffffff',
+        align: 'center',
+        wordWrap: { width: 380 } // Wrap text
+    });
+    descText.setOrigin(0.5, 0);
+
+    // Calculate background dimensions based on text
+    const padding = 15;
+    const totalTextHeight = nameText.height + 5 + descText.height; // Add spacing between lines
+    const bgWidth = Math.max(nameText.width, descText.width) + padding * 2;
+    const bgHeight = totalTextHeight + padding * 2;
+
+    // Position texts relative to the center of the screen horizontally
+    const centerX = scene.cameras.main.width / 2;
+    nameText.setPosition(centerX, notificationY + padding);
+    descText.setPosition(centerX, notificationY + padding + nameText.height + 5);
+
+    // Draw the background rectangle behind the text
+    bgRect.fillRoundedRect(centerX - bgWidth / 2, notificationY, bgWidth, bgHeight, 10);
+    bgRect.strokeRoundedRect(centerX - bgWidth / 2, notificationY, bgWidth, bgHeight, 10);
+
+    // Add elements to the group
+    notificationGroup.add(bgRect);
+    notificationGroup.add(nameText);
+    notificationGroup.add(descText);
+
+    // Make the group fixed to the camera
+    notificationGroup.getChildren().forEach(child => {
+        child.setScrollFactor(0);
+        child.setDepth(1000); // Ensure it's on top
+    });
+
+    // Fade out and destroy after duration
+    scene.tweens.add({
+        targets: notificationGroup.getChildren(),
+        alpha: 0,
+        delay: displayDuration - 500, // Start fading 500ms before end
+        duration: 500,
+        onComplete: () => {
+            notificationGroup.destroy(true); // Destroy group and children
+        }
+    });
+}
+// --- End Achievement Notification ---
+
 // --- New Game Timer Text Helper Functions ---
 function showNewGameTimer(duration) {
     const scene = game.scene.scenes[0];
@@ -796,5 +925,14 @@ function update(time, delta) {
   // Ensure player visibility matches state
   if (player && player.visible !== playerVisible) {
       player.setVisible(playerVisible);
+  }
+
+  // Update New Game Timer text if active
+  if (newGameTimerText && newGameTimerText.active && newGameEndTime > 0) {
+    // Text position is now fixed via scrollFactor(0) in showNewGameTimer
+  } else if (newGameTimerText) {
+    // If text object exists but shouldn't (e.g., endTime <= 0), ensure it's hidden/removed
+    newGameTimerText.destroy();
+    newGameTimerText = null;
   }
 }
