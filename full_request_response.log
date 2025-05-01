@@ -1,0 +1,494 @@
+2025-04-30 17:38:25,422 - REQUEST: GET / HTTP/1.1
+host: localhost:8080
+connection: keep-alive
+sec-ch-ua: "Google Chrome";v="135", "Not-A.Brand";v="8", "Chromium";v="135"
+sec-ch-ua-mobile: ?0
+sec-ch-ua-platform: "macOS"
+upgrade-insecure-requests: 1
+user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36
+sec-purpose: prefetch;prerender
+purpose: prefetch
+accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+sec-fetch-site: none
+sec-fetch-mode: navigate
+sec-fetch-user: ?1
+sec-fetch-dest: document
+accept-encoding: gzip, deflate, br, zstd
+accept-language: en-US,en;q=0.9,es-US;q=0.8,es;q=0.7
+cookie: session_token=[REDACTED]
+if-none-match: "ee1067ba55f184cbb27880f46ef0d77a"
+if-modified-since: Mon, 28 Apr 2025 02:50:00 GMT
+
+[No request body]
+--------------------
+RESPONSE: HTTP/1.1 200
+content-type: text/html; charset=utf-8
+accept-ranges: bytes
+content-length: 14444
+last-modified: Mon, 28 Apr 2025 02:50:00 GMT
+etag: "ee1067ba55f184cbb27880f46ef0d77a"
+x-process-time: 0.004719972610473633
+
+[No response body]
+2025-04-30 17:38:25,444 - REQUEST: GET /pictures/Home_Background.jpg HTTP/1.1
+host: localhost:8080
+connection: keep-alive
+sec-ch-ua-platform: "macOS"
+user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36
+sec-ch-ua: "Google Chrome";v="135", "Not-A.Brand";v="8", "Chromium";v="135"
+sec-purpose: prefetch;prerender
+sec-ch-ua-mobile: ?0
+accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8
+purpose: prefetch
+sec-fetch-site: same-origin
+sec-fetch-mode: no-cors
+sec-fetch-dest: image
+referer: http://localhost:8080/
+accept-encoding: gzip, deflate, br, zstd
+accept-language: en-US,en;q=0.9,es-US;q=0.8,es;q=0.7
+cookie: session_token=[REDACTED]
+if-none-match: "1c5a56af855263eaec943af59ef0f987"
+if-modified-since: Mon, 28 Apr 2025 02:50:00 GMT
+
+[No request body]
+--------------------
+RESPONSE: HTTP/1.1 304
+etag: "1c5a56af855263eaec943af59ef0f987"
+x-process-time: 0.001882791519165039
+
+[No response body]
+2025-04-30 17:38:25,464 - REQUEST: GET /auth/status HTTP/1.1
+host: localhost:8080
+connection: keep-alive
+sec-ch-ua-platform: "macOS"
+user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36
+sec-ch-ua: "Google Chrome";v="135", "Not-A.Brand";v="8", "Chromium";v="135"
+sec-purpose: prefetch;prerender
+sec-ch-ua-mobile: ?0
+accept: */*
+purpose: prefetch
+sec-fetch-site: same-origin
+sec-fetch-mode: cors
+sec-fetch-dest: empty
+referer: http://localhost:8080/
+accept-encoding: gzip, deflate, br, zstd
+accept-language: en-US,en;q=0.9,es-US;q=0.8,es;q=0.7
+cookie: session_token=[REDACTED]
+
+[No request body]
+--------------------
+RESPONSE: HTTP/1.1 200
+content-length: 19
+content-type: application/json
+x-process-time: 0.009664535522460938
+
+[No response body]
+2025-04-30 17:38:25,476 - REQUEST: GET /pictures/loginbutton.png HTTP/1.1
+host: localhost:8080
+connection: keep-alive
+sec-ch-ua-platform: "macOS"
+user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36
+sec-ch-ua: "Google Chrome";v="135", "Not-A.Brand";v="8", "Chromium";v="135"
+sec-purpose: prefetch;prerender
+sec-ch-ua-mobile: ?0
+accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8
+purpose: prefetch
+sec-fetch-site: same-origin
+sec-fetch-mode: no-cors
+sec-fetch-dest: image
+referer: http://localhost:8080/
+accept-encoding: gzip, deflate, br, zstd
+accept-language: en-US,en;q=0.9,es-US;q=0.8,es;q=0.7
+cookie: session_token=[REDACTED]
+if-none-match: "d174a902f5e899cc61e1f93a86f18987"
+if-modified-since: Mon, 28 Apr 2025 02:50:00 GMT
+
+[No request body]
+--------------------
+RESPONSE: HTTP/1.1 304
+etag: "d174a902f5e899cc61e1f93a86f18987"
+x-process-time: 0.0055429935455322266
+
+[No response body]
+2025-04-30 17:38:25,476 - REQUEST: GET /pictures/registerbutton.png HTTP/1.1
+host: localhost:8080
+connection: keep-alive
+sec-ch-ua-platform: "macOS"
+user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36
+sec-ch-ua: "Google Chrome";v="135", "Not-A.Brand";v="8", "Chromium";v="135"
+sec-purpose: prefetch;prerender
+sec-ch-ua-mobile: ?0
+accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8
+purpose: prefetch
+sec-fetch-site: same-origin
+sec-fetch-mode: no-cors
+sec-fetch-dest: image
+referer: http://localhost:8080/
+accept-encoding: gzip, deflate, br, zstd
+accept-language: en-US,en;q=0.9,es-US;q=0.8,es;q=0.7
+cookie: session_token=[REDACTED]
+if-none-match: "16d6669b68c73215ccad0d29f98af626"
+if-modified-since: Mon, 28 Apr 2025 02:50:00 GMT
+
+[No request body]
+--------------------
+RESPONSE: HTTP/1.1 304
+etag: "16d6669b68c73215ccad0d29f98af626"
+x-process-time: 0.00478053092956543
+
+[No response body]
+2025-04-30 17:38:34,223 - REQUEST: GET /auth/status HTTP/1.1
+host: localhost:8080
+connection: keep-alive
+sec-ch-ua-platform: "macOS"
+user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36
+sec-ch-ua: "Google Chrome";v="135", "Not-A.Brand";v="8", "Chromium";v="135"
+sec-ch-ua-mobile: ?0
+accept: */*
+sec-fetch-site: same-origin
+sec-fetch-mode: cors
+sec-fetch-dest: empty
+referer: http://localhost:8080/
+accept-encoding: gzip, deflate, br, zstd
+accept-language: en-US,en;q=0.9,es-US;q=0.8,es;q=0.7
+cookie: session_token=[REDACTED]
+
+[No request body]
+--------------------
+RESPONSE: HTTP/1.1 200
+content-length: 19
+content-type: application/json
+x-process-time: 0.002797365188598633
+
+[No response body]
+2025-04-30 17:38:34,229 - REQUEST: GET /favicon.ico HTTP/1.1
+host: localhost:8080
+connection: keep-alive
+sec-ch-ua-platform: "macOS"
+user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36
+sec-ch-ua: "Google Chrome";v="135", "Not-A.Brand";v="8", "Chromium";v="135"
+sec-ch-ua-mobile: ?0
+accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8
+sec-fetch-site: same-origin
+sec-fetch-mode: no-cors
+sec-fetch-dest: image
+referer: http://localhost:8080/
+accept-encoding: gzip, deflate, br, zstd
+accept-language: en-US,en;q=0.9,es-US;q=0.8,es;q=0.7
+cookie: session_token=[REDACTED]
+
+[No request body]
+--------------------
+RESPONSE: HTTP/1.1 404
+content-length: 22
+content-type: application/json
+x-process-time: 0.0033195018768310547
+
+[No response body]
+2025-04-30 17:38:55,539 - REQUEST: GET /login HTTP/1.1
+host: localhost:8080
+connection: keep-alive
+sec-ch-ua: "Google Chrome";v="135", "Not-A.Brand";v="8", "Chromium";v="135"
+sec-ch-ua-mobile: ?0
+sec-ch-ua-platform: "macOS"
+upgrade-insecure-requests: 1
+user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36
+accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+sec-fetch-site: same-origin
+sec-fetch-mode: navigate
+sec-fetch-user: ?1
+sec-fetch-dest: document
+referer: http://localhost:8080/
+accept-encoding: gzip, deflate, br, zstd
+accept-language: en-US,en;q=0.9,es-US;q=0.8,es;q=0.7
+cookie: session_token=[REDACTED]
+if-none-match: "da13b11d3407548184870fd47a359d69"
+if-modified-since: Mon, 28 Apr 2025 02:50:00 GMT
+
+[No request body]
+--------------------
+RESPONSE: HTTP/1.1 200
+content-type: text/html; charset=utf-8
+accept-ranges: bytes
+content-length: 6776
+last-modified: Mon, 28 Apr 2025 02:50:00 GMT
+etag: "da13b11d3407548184870fd47a359d69"
+x-process-time: 0.005829334259033203
+
+[No response body]
+2025-04-30 17:38:55,593 - REQUEST: GET /pictures/login_background.jpg HTTP/1.1
+host: localhost:8080
+connection: keep-alive
+sec-ch-ua-platform: "macOS"
+user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36
+sec-ch-ua: "Google Chrome";v="135", "Not-A.Brand";v="8", "Chromium";v="135"
+sec-ch-ua-mobile: ?0
+accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8
+sec-fetch-site: same-origin
+sec-fetch-mode: no-cors
+sec-fetch-dest: image
+referer: http://localhost:8080/login
+accept-encoding: gzip, deflate, br, zstd
+accept-language: en-US,en;q=0.9,es-US;q=0.8,es;q=0.7
+cookie: session_token=[REDACTED]
+if-none-match: "558f5a5d11c23cf2f1535a1edc5cacfb"
+if-modified-since: Mon, 28 Apr 2025 02:50:00 GMT
+
+[No request body]
+--------------------
+RESPONSE: HTTP/1.1 304
+etag: "558f5a5d11c23cf2f1535a1edc5cacfb"
+x-process-time: 0.004805326461791992
+
+[No response body]
+2025-04-30 17:38:55,596 - REQUEST: GET /pictures/back.png HTTP/1.1
+host: localhost:8080
+connection: keep-alive
+sec-ch-ua-platform: "macOS"
+user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36
+sec-ch-ua: "Google Chrome";v="135", "Not-A.Brand";v="8", "Chromium";v="135"
+sec-ch-ua-mobile: ?0
+accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8
+sec-fetch-site: same-origin
+sec-fetch-mode: no-cors
+sec-fetch-dest: image
+referer: http://localhost:8080/login
+accept-encoding: gzip, deflate, br, zstd
+accept-language: en-US,en;q=0.9,es-US;q=0.8,es;q=0.7
+cookie: session_token=[REDACTED]
+if-none-match: "421639f7cf0c69bf7790fd4a01ac70c6"
+if-modified-since: Mon, 28 Apr 2025 02:50:00 GMT
+
+[No request body]
+--------------------
+RESPONSE: HTTP/1.1 304
+etag: "421639f7cf0c69bf7790fd4a01ac70c6"
+x-process-time: 0.005801200866699219
+
+[No response body]
+2025-04-30 17:38:56,833 - REQUEST: POST /api/login HTTP/1.1
+host: localhost:8080
+connection: keep-alive
+content-length: 49
+sec-ch-ua-platform: "macOS"
+user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36
+sec-ch-ua: "Google Chrome";v="135", "Not-A.Brand";v="8", "Chromium";v="135"
+content-type: application/json
+sec-ch-ua-mobile: ?0
+accept: */*
+origin: http://localhost:8080
+sec-fetch-site: same-origin
+sec-fetch-mode: cors
+sec-fetch-dest: empty
+referer: http://localhost:8080/login
+accept-encoding: gzip, deflate, br, zstd
+accept-language: en-US,en;q=0.9,es-US;q=0.8,es;q=0.7
+cookie: session_token=[REDACTED]
+
+[Request body redacted for sensitive endpoint]
+--------------------
+RESPONSE: HTTP/1.1 401
+content-length: 43
+content-type: application/json
+x-process-time: 0.004224300384521484
+
+[No response body]
+2025-04-30 17:38:58,806 - REQUEST: GET /auth/status HTTP/1.1
+host: localhost:8080
+connection: keep-alive
+sec-ch-ua-platform: "macOS"
+user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36
+sec-ch-ua: "Google Chrome";v="135", "Not-A.Brand";v="8", "Chromium";v="135"
+sec-ch-ua-mobile: ?0
+accept: */*
+sec-fetch-site: same-origin
+sec-fetch-mode: cors
+sec-fetch-dest: empty
+referer: http://localhost:8080/
+accept-encoding: gzip, deflate, br, zstd
+accept-language: en-US,en;q=0.9,es-US;q=0.8,es;q=0.7
+cookie: session_token=[REDACTED]
+
+[No request body]
+--------------------
+RESPONSE: HTTP/1.1 200
+content-length: 19
+content-type: application/json
+x-process-time: 0.0028748512268066406
+
+[No response body]
+2025-04-30 17:38:59,781 - REQUEST: GET /register HTTP/1.1
+host: localhost:8080
+connection: keep-alive
+sec-ch-ua: "Google Chrome";v="135", "Not-A.Brand";v="8", "Chromium";v="135"
+sec-ch-ua-mobile: ?0
+sec-ch-ua-platform: "macOS"
+upgrade-insecure-requests: 1
+user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36
+accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+sec-fetch-site: same-origin
+sec-fetch-mode: navigate
+sec-fetch-user: ?1
+sec-fetch-dest: document
+referer: http://localhost:8080/
+accept-encoding: gzip, deflate, br, zstd
+accept-language: en-US,en;q=0.9,es-US;q=0.8,es;q=0.7
+cookie: session_token=[REDACTED]
+if-none-match: "9bfd4c3adf2688a789484e7107afe5eb"
+if-modified-since: Mon, 28 Apr 2025 02:50:00 GMT
+
+[No request body]
+--------------------
+RESPONSE: HTTP/1.1 200
+content-type: text/html; charset=utf-8
+accept-ranges: bytes
+content-length: 7786
+last-modified: Mon, 28 Apr 2025 02:50:00 GMT
+etag: "9bfd4c3adf2688a789484e7107afe5eb"
+x-process-time: 0.0029964447021484375
+
+[No response body]
+2025-04-30 17:38:59,830 - REQUEST: GET /pictures/register_background.jpg HTTP/1.1
+host: localhost:8080
+connection: keep-alive
+sec-ch-ua-platform: "macOS"
+user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36
+sec-ch-ua: "Google Chrome";v="135", "Not-A.Brand";v="8", "Chromium";v="135"
+sec-ch-ua-mobile: ?0
+accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8
+sec-fetch-site: same-origin
+sec-fetch-mode: no-cors
+sec-fetch-dest: image
+referer: http://localhost:8080/register
+accept-encoding: gzip, deflate, br, zstd
+accept-language: en-US,en;q=0.9,es-US;q=0.8,es;q=0.7
+cookie: session_token=[REDACTED]
+if-none-match: "c6ef86f1cfdabdc14a1b03433980b8e7"
+if-modified-since: Mon, 28 Apr 2025 02:50:00 GMT
+
+[No request body]
+--------------------
+RESPONSE: HTTP/1.1 304
+etag: "c6ef86f1cfdabdc14a1b03433980b8e7"
+x-process-time: 0.002712726593017578
+
+[No response body]
+2025-04-30 17:39:06,636 - REQUEST: POST /api/register HTTP/1.1
+host: localhost:8080
+connection: keep-alive
+content-length: 49
+sec-ch-ua-platform: "macOS"
+user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36
+sec-ch-ua: "Google Chrome";v="135", "Not-A.Brand";v="8", "Chromium";v="135"
+content-type: application/json
+sec-ch-ua-mobile: ?0
+accept: */*
+origin: http://localhost:8080
+sec-fetch-site: same-origin
+sec-fetch-mode: cors
+sec-fetch-dest: empty
+referer: http://localhost:8080/register
+accept-encoding: gzip, deflate, br, zstd
+accept-language: en-US,en;q=0.9,es-US;q=0.8,es;q=0.7
+cookie: session_token=[REDACTED]
+
+[Request body redacted for sensitive endpoint]
+--------------------
+RESPONSE: HTTP/1.1 201
+content-length: 37
+content-type: application/json
+x-process-time: 0.2882828712463379
+
+[No response body]
+2025-04-30 17:39:06,660 - REQUEST: GET / HTTP/1.1
+host: 192.168.1.7:8080
+content-length: 0
+
+[No request body]
+--------------------
+RESPONSE: HTTP/1.1 200
+content-type: text/html; charset=utf-8
+accept-ranges: bytes
+content-length: 14444
+last-modified: Mon, 28 Apr 2025 02:50:00 GMT
+etag: "ee1067ba55f184cbb27880f46ef0d77a"
+x-process-time: 0.001687765121459961
+
+[No response body]
+2025-04-30 17:39:09,678 - REQUEST: POST /api/login HTTP/1.1
+host: localhost:8080
+connection: keep-alive
+content-length: 49
+sec-ch-ua-platform: "macOS"
+user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36
+sec-ch-ua: "Google Chrome";v="135", "Not-A.Brand";v="8", "Chromium";v="135"
+content-type: application/json
+sec-ch-ua-mobile: ?0
+accept: */*
+origin: http://localhost:8080
+sec-fetch-site: same-origin
+sec-fetch-mode: cors
+sec-fetch-dest: empty
+referer: http://localhost:8080/login
+accept-encoding: gzip, deflate, br, zstd
+accept-language: en-US,en;q=0.9,es-US;q=0.8,es;q=0.7
+cookie: session_token=[REDACTED]
+
+[Request body redacted for sensitive endpoint]
+--------------------
+RESPONSE: HTTP/1.1 200
+set-cookie: session_token=[REDACTED]; ...
+content-length: 30
+content-type: application/json
+x-process-time: 0.2657170295715332
+
+[No response body]
+2025-04-30 17:39:09,711 - REQUEST: GET /auth/status HTTP/1.1
+host: localhost:8080
+connection: keep-alive
+sec-ch-ua-platform: "macOS"
+user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36
+sec-ch-ua: "Google Chrome";v="135", "Not-A.Brand";v="8", "Chromium";v="135"
+sec-ch-ua-mobile: ?0
+accept: */*
+sec-fetch-site: same-origin
+sec-fetch-mode: cors
+sec-fetch-dest: empty
+referer: http://localhost:8080/
+accept-encoding: gzip, deflate, br, zstd
+accept-language: en-US,en;q=0.9,es-US;q=0.8,es;q=0.7
+cookie: session_token=[REDACTED]
+
+[No request body]
+--------------------
+RESPONSE: HTTP/1.1 200
+content-length: 43
+content-type: application/json
+x-process-time: 0.0024166107177734375
+
+[No response body]
+2025-04-30 17:39:09,735 - REQUEST: GET /pictures/newlogoutbutton1.png HTTP/1.1
+host: localhost:8080
+connection: keep-alive
+sec-ch-ua-platform: "macOS"
+user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36
+sec-ch-ua: "Google Chrome";v="135", "Not-A.Brand";v="8", "Chromium";v="135"
+sec-ch-ua-mobile: ?0
+accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8
+sec-fetch-site: same-origin
+sec-fetch-mode: no-cors
+sec-fetch-dest: image
+referer: http://localhost:8080/
+accept-encoding: gzip, deflate, br, zstd
+accept-language: en-US,en;q=0.9,es-US;q=0.8,es;q=0.7
+cookie: session_token=[REDACTED]
+if-none-match: "713d3058e9675f93a601006861a90392"
+if-modified-since: Mon, 28 Apr 2025 02:50:00 GMT
+
+[No request body]
+--------------------
+RESPONSE: HTTP/1.1 304
+etag: "713d3058e9675f93a601006861a90392"
+x-process-time: 0.0034303665161132812
+
+[No response body]
