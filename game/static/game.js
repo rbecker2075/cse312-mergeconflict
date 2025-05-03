@@ -330,8 +330,8 @@ function handleSocketMessage(event) {
     player.y = worldHeight / 2;
     
     // Update timer with full duration
-    const minutes = Math.floor(game_duration / 60);
-    const seconds = Math.floor(game_duration % 60);
+    const minutes = Math.floor(data.time_remaining / 60);
+    const seconds = Math.floor(data.time_remaining % 60);
     timerText.setText(`${minutes}:${seconds.toString().padStart(2, '0')}`);
 
     // Clear existing food
@@ -376,46 +376,44 @@ function handleSocketMessage(event) {
       if (otherPlayers[data.id].usernameText) otherPlayers[data.id].usernameText.destroy();
       delete otherPlayers[data.id];
     }
-  }
-  // --- New Message Handlers (Server needs to send these) ---
-  else if (data.type === "eaten") {
+  } else if (data.type === "eaten") {
     // Player was eaten
     playerVisible = false;
-    playerInputDisabled = true; // <-- Disable input
+    playerInputDisabled = true;
     
-    const scene = game.scene.scenes[0]; // Get scene context
+    const scene = game.scene.scenes[0];
 
     // Hide player and associated UI elements
-    const deathX = player ? player.x : scene.cameras.main.scrollX + scene.cameras.main.width / 2; // Store position before hiding
+    const deathX = player ? player.x : scene.cameras.main.scrollX + scene.cameras.main.width / 2;
     const deathY = player ? player.y : scene.cameras.main.scrollY + scene.cameras.main.height / 2;
 
     if (player) player.setVisible(false);
     if (playerPowerText) playerPowerText.setVisible(false);
     if (timerText) timerText.setVisible(false);
     if (localUsernameText) localUsernameText.setVisible(false);
-    if (invulnerabilityText) invulnerabilityText.setVisible(false); // Hide invuln timer too
-    if (player && player.body) player.body.setVelocity(0, 0); // Stop movement immediately
+    if (invulnerabilityText) invulnerabilityText.setVisible(false);
+    if (player && player.body) player.body.setVelocity(0, 0);
 
     // Display "You got eaten!" message
     if (respawnMessageText) {
         respawnMessageText.destroy();
-        respawnMessageText = null; // Ensure reference is cleared
+        respawnMessageText = null;
     }
     
-    respawnMessageText = scene.add.text(deathX, deathY - 60, // Position above death location
-      'You got eaten! Wait 10 seconds to respawn...', { // Updated text (Manually setting initial text)
+    respawnMessageText = scene.add.text(deathX, deathY - 60,
+      'You got eaten! Wait 10 seconds to respawn...', {
       fontSize: '24px', color: '#ff0000', align: 'center',
       padding: { x: 15, y: 10 }
     });
 
     if (respawnMessageText) {
         respawnMessageText.setOrigin(0.5);
-        respawnMessageText.setDepth(500); // <<< Increased Depth significantly
-        respawnMessageText.setVisible(true); // <<< Explicitly set visible
+        respawnMessageText.setDepth(500);
+        respawnMessageText.setVisible(true);
     }
 
     // Start countdown timer
-    respawnEndTime = scene.time.now + 10000; // 10 seconds
+    respawnEndTime = scene.time.now + 10000;
 
     // Clear intermission flag
     isIntermission = false;
@@ -423,95 +421,24 @@ function handleSocketMessage(event) {
     // Player is respawning (message from server)
     console.log("Received 'respawn' message.");
     if (player) {
-      player.setPosition(data.x, data.y); // Use coordinates from server
+      player.setPosition(data.x, data.y);
       
       // Make player and UI visible again
       player.setVisible(true);
       if (playerPowerText) playerPowerText.setVisible(true);
       if (timerText) timerText.setVisible(true);
       if (localUsernameText) localUsernameText.setVisible(true);
-      // Invulnerability text will be created/made visible by startInvulnerability
-      
       playerVisible = true;
-      playerInputDisabled = false; // <-- Re-enable input
-      startInvulnerability(10); // Start 10-second invulnerability to match respawn timer
+      playerInputDisabled = false;
+      startInvulnerability(10);
     }
     // Ensure power is reset visually (server handles the actual reset)
-    playerPower = 1; // Assuming respawn resets power to 1
+    playerPower = 1;
     if (playerPowerText) playerPowerText.setText(playerPower.toString());
-  }
-  // --- End Message Handlers ---
-
-  // --- Achievement Handler --- 
-  else if (data.type === "achievement_unlocked") { 
+  } else if (data.type === "achievement_unlocked") {
     // New achievement unlocked! Display notification.
     console.log("Achievement Unlocked:", data.achievement);
     displayAchievementNotification(scene, data.achievement.name, data.achievement.description);
-  }
-
-  // Update local player's power text and timer position
-  playerPowerText.setPosition(player.x, player.y);
-  timerText.setPosition(player.x, player.y + 30);
-  // Update local username text position
-  if (localUsernameText) {
-    localUsernameText.setPosition(player.x, player.y - 30);
-  }
-
-  // --- Invulnerability Update Logic ---
-  if (isInvulnerable) {
-    const remainingTime = (invulnerabilityEndTime - time) / 1000;
-    if (remainingTime > 0 && !isIntermission) {
-      if (invulnerabilityText) {
-        invulnerabilityText.setText(`Invulnerable: ${remainingTime.toFixed(1)}s`);
-        updateInvulnerabilityTextPosition(); // Keep text positioned correctly
-        if (!invulnerabilityText.visible) invulnerabilityText.setVisible(true); // Ensure visible
-      }
-      // Optional: Add visual effect like blinking
-      player.setAlpha(0.5 + Math.abs(Math.sin(time / 150)) * 0.4); // Simple blink effect
-    } else { // Time ended OR isIntermission is true
-      // Hide invulnerability text if it exists
-      if (invulnerabilityText && invulnerabilityText.visible) {
-          invulnerabilityText.setVisible(false);
-      }
-      // End invulnerability state if time is up
-      if (remainingTime <= 0) {
-        endInvulnerability();
-      }
-    }
-  }
-  // --- End Invulnerability Update Logic ---
-
-  // --- Respawn Countdown Message Update ---
-  if (respawnMessageText && respawnEndTime > 0) {
-    const scene = game.scene.scenes[0];
-
-    // NO LONGER UPDATING POSITION HERE - text stays at death location
-
-    // Update countdown text
-    const remainingSeconds = Math.max(0, Math.ceil((respawnEndTime - time) / 1000));
-    respawnMessageText.setText(`You've been eaten! Respawning in ${remainingSeconds} seconds`);
-
-    // Fallback removal if time expires before respawn message
-    if (time >= respawnEndTime) {
-        respawnMessageText.destroy();
-        respawnMessageText = null;
-        respawnEndTime = 0;
-    }
-  }
-  // --- End Respawn Countdown ---
-
-  // Ensure player visibility matches state
-  if (player && player.visible !== playerVisible) {
-      player.setVisible(playerVisible);
-  }
-
-  // Update New Game Timer text if active
-  if (newGameTimerText && newGameTimerText.active && newGameEndTime > 0) {
-    // Text position is now fixed via scrollFactor(0) in showNewGameTimer
-  } else if (newGameTimerText) {
-    // If text object exists but shouldn't (e.g., endTime <= 0), ensure it's hidden/removed
-    newGameTimerText.destroy();
-    newGameTimerText = null;
   }
 }
 
@@ -720,9 +647,15 @@ function updateInvulnerabilityTextPosition() {
 // --- Achievement Notification Function ---
 function displayAchievementNotification(scene, name, description) {
     if (!scene) return;
+    console.log(`[AchievementNotify] Called with: name='${name}', desc='${description}'`);
 
     const notificationY = 50; // Position from the top
     const displayDuration = 5000; // 5 seconds
+    const camera = scene.cameras.main;
+    if (!camera) {
+        console.error("[AchievementNotify] Could not get main camera!");
+        return;
+    }
 
     // Create a container for the notification text
     const notificationGroup = scene.add.group();
@@ -758,13 +691,15 @@ function displayAchievementNotification(scene, name, description) {
     const bgHeight = totalTextHeight + padding * 2;
 
     // Position texts relative to the center of the screen horizontally
-    const centerX = scene.cameras.main.width / 2;
+    const centerX = camera.width / 2; // Use camera width
     nameText.setPosition(centerX, notificationY + padding);
     descText.setPosition(centerX, notificationY + padding + nameText.height + 5);
 
     // Draw the background rectangle behind the text
     bgRect.fillRoundedRect(centerX - bgWidth / 2, notificationY, bgWidth, bgHeight, 10);
     bgRect.strokeRoundedRect(centerX - bgWidth / 2, notificationY, bgWidth, bgHeight, 10);
+
+    console.log(`[AchievementNotify] Created text/graphics. bgRect:`, bgRect, `nameText:`, nameText, `descText:`, descText);
 
     // Add elements to the group
     notificationGroup.add(bgRect);
@@ -775,9 +710,11 @@ function displayAchievementNotification(scene, name, description) {
     notificationGroup.getChildren().forEach(child => {
         child.setScrollFactor(0);
         child.setDepth(1000); // Ensure it's on top
+        console.log(`[AchievementNotify] Child properties:`, { x: child.x, y: child.y, alpha: child.alpha, depth: child.depth, visible: child.visible });
     });
 
     // Fade out and destroy after duration
+    console.log('[AchievementNotify] Setting tween for fade out.');
     scene.tweens.add({
         targets: notificationGroup.getChildren(),
         alpha: 0,
@@ -871,15 +808,17 @@ function update(time, delta) {
   }
   // --- End Player Movement Input ---
 
-  // Update local player's power text and timer position
-  playerPowerText.setPosition(player.x, player.y);
-  timerText.setPosition(player.x, player.y + 30);
-  // Update local username text position
-  if (localUsernameText) {
-    localUsernameText.setPosition(player.x, player.y - 30);
+  // --- Moved from handleSocketMessage --- 
+  // Update New Game Timer text if active
+  if (newGameTimerText && newGameTimerText.active && newGameEndTime > 0) {
+    // Text position is now fixed via scrollFactor(0) in showNewGameTimer
+  } else if (newGameTimerText) {
+    // If text object exists but shouldn't (e.g., endTime <= 0), ensure it's hidden/removed
+    newGameTimerText.destroy();
+    newGameTimerText = null;
   }
 
-  // --- Invulnerability Update Logic ---
+  // --- Invulnerability Update Logic (Uses 'time') ---
   if (isInvulnerable) {
     const remainingTime = (invulnerabilityEndTime - time) / 1000;
     if (remainingTime > 0 && !isIntermission) {
@@ -903,17 +842,17 @@ function update(time, delta) {
   }
   // --- End Invulnerability Update Logic ---
 
-  // --- Respawn Countdown Message Update ---
+  // --- Respawn Countdown Message Update (Uses 'time') ---
   if (respawnMessageText && respawnEndTime > 0) {
-    const scene = game.scene.scenes[0];
+    const scene = game.scene.scenes[0]; // Ensure scene is available
 
-    // NO LONGER UPDATING POSITION HERE - text stays at death location
+    // Note: Text position is fixed at death location (not updated here)
 
     // Update countdown text
     const remainingSeconds = Math.max(0, Math.ceil((respawnEndTime - time) / 1000));
     respawnMessageText.setText(`You've been eaten! Respawning in ${remainingSeconds} seconds`);
 
-    // Fallback removal if time expires before respawn message
+    // Fallback removal if time expires before respawn message arrives from server
     if (time >= respawnEndTime) {
         respawnMessageText.destroy();
         respawnMessageText = null;
@@ -927,12 +866,11 @@ function update(time, delta) {
       player.setVisible(playerVisible);
   }
 
-  // Update New Game Timer text if active
-  if (newGameTimerText && newGameTimerText.active && newGameEndTime > 0) {
-    // Text position is now fixed via scrollFactor(0) in showNewGameTimer
-  } else if (newGameTimerText) {
-    // If text object exists but shouldn't (e.g., endTime <= 0), ensure it's hidden/removed
-    newGameTimerText.destroy();
-    newGameTimerText = null;
+  // Update local player's power text and timer position
+  playerPowerText.setPosition(player.x, player.y);
+  timerText.setPosition(player.x, player.y + 30);
+  // Update local username text position
+  if (localUsernameText) {
+    localUsernameText.setPosition(player.x, player.y - 30);
   }
 }

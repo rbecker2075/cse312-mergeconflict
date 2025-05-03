@@ -352,6 +352,12 @@ async def game_ws(websocket: WebSocket):
                 if distance < 50:  # Increased from 30 to 50 for food collection radius
                     food_to_remove.append(food)
                     clients[player_id]["power"] += 1
+                    # --- Check score achievements after power increase ---
+                    current_username = clients[player_id].get("username")
+                    current_power = clients[player_id]["power"]
+                    if current_username:
+                        asyncio.create_task(check_in_game_score_achievements(current_username, current_power))
+                    # --- End Achievement Check ---
             
             # Remove collected food and notify all clients
             if food_to_remove:
@@ -426,6 +432,13 @@ async def game_ws(websocket: WebSocket):
                             loser["power"] = 1
                             loser["is_respawning"] = True # <<< SET RESPAWNING FLAG
                             
+                            # --- Check winner's score achievements after power increase ---
+                            winner_username = winner.get("username") # Already got this above
+                            new_winner_power = winner["power"]
+                            if winner_username:
+                                asyncio.create_task(check_in_game_score_achievements(winner_username, new_winner_power))
+                            # --- End Score Achievement Check ---
+
                             # --- Update winner's eaten count & check achievements ---
                             winner_username = winner.get("username")
                             if winner_username:
@@ -954,12 +967,15 @@ def speed_update(player):
 
 # --- Achievement Definitions ---
 ACHIEVEMENTS = {
-    "score_100": {"name": "Point Collector", "description": "Reach a total lifetime score of 100 points.", "criteria": lambda stats: stats.get("total_score_lifetime", 0) >= 100},
-    "score_500": {"name": "Score Hoarder", "description": "Reach a total lifetime score of 500 points.", "criteria": lambda stats: stats.get("total_score_lifetime", 0) >= 500},
-    "score_1000": {"name": "Point Tycoon", "description": "Reach a total lifetime score of 1000 points.", "criteria": lambda stats: stats.get("total_score_lifetime", 0) >= 1000},
+    # Score Achievements
+    "score_30": {"name": "Point Novice", "description": "Reach a total lifetime score of 30 points.", "criteria": lambda stats: stats.get("total_score_lifetime", 0) >= 30},
+    "score_60": {"name": "Point Adept", "description": "Reach a total lifetime score of 60 points.", "criteria": lambda stats: stats.get("total_score_lifetime", 0) >= 60},
+    "score_90": {"name": "Point Master", "description": "Reach a total lifetime score of 90 points.", "criteria": lambda stats: stats.get("total_score_lifetime", 0) >= 90},
+    # Games Played Achievements
     "played_1": {"name": "First Game!", "description": "Play your first game.", "criteria": lambda stats: stats.get("games_played", 0) >= 1},
+    "played_5": {"name": "Getting Started", "description": "Play 5 games.", "criteria": lambda stats: stats.get("games_played", 0) >= 5},
     "played_10": {"name": "Regular Player", "description": "Play 10 games.", "criteria": lambda stats: stats.get("games_played", 0) >= 10},
-    "played_50": {"name": "Veteran Player", "description": "Play 50 games.", "criteria": lambda stats: stats.get("games_played", 0) >= 50},
+    # Players Eaten Achievements
     "eaten_1": {"name": "First Bite", "description": "Eat your first player.", "criteria": lambda stats: stats.get("players_eaten_lifetime", 0) >= 1},
     "eaten_5": {"name": "Cannibal", "description": "Eat 5 players.", "criteria": lambda stats: stats.get("players_eaten_lifetime", 0) >= 5},
     "eaten_20": {"name": "Apex Predator", "description": "Eat 20 players.", "criteria": lambda stats: stats.get("players_eaten_lifetime", 0) >= 20},
@@ -968,10 +984,12 @@ ACHIEVEMENTS = {
 
 # --- Achievement Helper Function ---
 async def check_and_grant_achievements(username: str):
+    """Checks and grants achievements based on LIFETIME stats (games played, eaten)."""
     if not username:
         return # Only logged-in users get achievements
 
-    user_data = users_collection.find_one({"username": username}, {"_id": 0, "unlocked_achievements": 1, "total_score_lifetime": 1, "games_played": 1, "players_eaten_lifetime": 1})
+    # Fetch only the stats needed for lifetime checks + unlocked list
+    user_data = users_collection.find_one({"username": username}, {"_id": 0, "unlocked_achievements": 1, "games_played": 1, "players_eaten_lifetime": 1})
     if not user_data:
         print(f"[Achievements] User not found: {username}")
         return
@@ -980,6 +998,11 @@ async def check_and_grant_achievements(username: str):
     newly_unlocked = []
 
     for achievement_id, details in ACHIEVEMENTS.items():
+        # --- Skip score achievements, handled by check_in_game_score_achievements ---
+        if achievement_id.startswith("score_"):
+            continue
+        # --- End Skip ---
+
         if achievement_id not in current_achievements:
             if details["criteria"](user_data): # Pass the whole user_data dict
                 newly_unlocked.append(achievement_id)
@@ -991,3 +1014,78 @@ async def check_and_grant_achievements(username: str):
             {"username": username},
             {"$addToSet": {"unlocked_achievements": {"$each": newly_unlocked}}}
         )
+
+        # Send notifications via WebSocket
+        for client_id, client_info in clients.items():
+            if client_info.get("username") == username:
+                ws = client_info.get("ws")
+                if ws:
+                    for ach_id in newly_unlocked:
+                        try:
+                            await ws.send_json({
+                                "type": "achievement_unlocked",
+                                "achievement": {
+                                    "id": ach_id,
+                                    "name": ACHIEVEMENTS[ach_id]["name"],
+                                    "description": ACHIEVEMENTS[ach_id]["description"]
+                                }
+                            })
+                            print(f"[Achievements] Sent notification for {ach_id} to {username}")
+                        except Exception as e:
+                            print(f"[Achievements] Error sending notification to {username}: {e}")
+                break
+
+# --- New Helper for In-Game Score Achievements ---
+async def check_in_game_score_achievements(username: str, current_power: int):
+    """Checks and grants score achievements based on current in-game power."""
+    if not username:
+        return
+
+    # Fetch only unlocked achievements to avoid duplicate checks/grants
+    user_data = users_collection.find_one({"username": username}, {"_id": 0, "unlocked_achievements": 1})
+    if user_data is None: # Check explicitly for None
+        print(f"[AchievementsScore] User not found: {username}")
+        return
+
+    current_achievements = set(user_data.get("unlocked_achievements", []))
+    newly_unlocked = []
+
+    for achievement_id, details in ACHIEVEMENTS.items():
+        # Only check score achievements
+        if not achievement_id.startswith("score_"):
+            continue
+
+        if achievement_id not in current_achievements:
+            # Evaluate criteria using current_power, passed as the expected stat name
+            temp_stats = {"total_score_lifetime": current_power} # Simulate stats dict for lambda
+            if details["criteria"](temp_stats):
+                newly_unlocked.append(achievement_id)
+
+    if newly_unlocked:
+        print(f"[AchievementsScore] User {username} unlocked score achievements: {newly_unlocked} with power {current_power}")
+        # Update database
+        users_collection.update_one(
+            {"username": username},
+            {"$addToSet": {"unlocked_achievements": {"$each": newly_unlocked}}}
+        )
+
+        # Send notifications via WebSocket
+        for client_id, client_info in clients.items():
+            if client_info.get("username") == username:
+                ws = client_info.get("ws")
+                if ws:
+                    for ach_id in newly_unlocked:
+                        try:
+                            await ws.send_json({
+                                "type": "achievement_unlocked",
+                                "achievement": {
+                                    "id": ach_id,
+                                    "name": ACHIEVEMENTS[ach_id]["name"],
+                                    "description": ACHIEVEMENTS[ach_id]["description"]
+                                }
+                            })
+                            print(f"[AchievementsScore] Sent notification for {ach_id} to {username}")
+                        except Exception as e:
+                            print(f"[AchievementsScore] Error sending notification to {username}: {e}")
+                break
+# --- End In-Game Score Helper ---
