@@ -26,6 +26,9 @@ from pathlib import Path
 app = FastAPI(title='Merge Conflict Game', description='Authentication and Game API', version='1.0')
 
 
+# Mount 'public/pictures' directory to serve images under '/pictures' path
+app.mount("/pictures", StaticFiles(directory="public/pictures"), name="pictures")
+
 # Mount 'game/static' directory to serve game logic
 app.mount("/game/static", StaticFiles(directory="game/static"), name="game-static")
 
