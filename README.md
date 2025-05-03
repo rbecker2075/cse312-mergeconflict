@@ -4,21 +4,24 @@
 
 ### Database: MongoDB
 
+### Logs: Logs are witten to cse312-mergeconflict/request_logs.log
+
+### Branches: main -- for cloning and running locally  |  deployment_checkpoint -- branch running at https://merge-conflict.cse312.dev/
+
 ### Big goal:
 
-* Agar.io clone
+* Agar.io clone - https://merge-conflict.cse312.dev/
 
 ### Current Goals:
 * phaser.io
 * game implementation 
 
 ### Next Goals
-* Deployment 
 
 ### Past Goals:
-* DockerCompose -- started, have the docker-compose file to successfully build basic app and database
-
-* Database -- have database running in docker, currently not sure if in seperate or same object but will fix if wrong in next commit
-* Authentication 
-* Logging -- moved to main, using middleware
-
+* DockerCompose -- finished, have the docker-compose file to successfully build the app and database
+* Database -- finished, have database running in docker
+* Authentication -- finished, passwords and auth_tokens are stored in a secure manner
+* Logging -- finished, moved to main, using middleware, successfully logs all needed info
+* Deployment -- finished, Deployed on Team server
+* Visuals, Web Sockets and Movement, Player Names, and Game -- finished

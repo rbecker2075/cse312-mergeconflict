@@ -4,15 +4,20 @@ from fastapi import Depends, HTTPException, status, Cookie
 from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel
 from typing import Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import secrets
 import hashlib
 import os
+from dotenv import load_dotenv
 from database import sessions_collection # Import database collection for session validation
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Security Configuration
 # Use environment variable for SECRET_KEY in production
-SECRET_KEY = os.environ.get("SECRET_KEY", secrets.token_hex(32))
+# Provide the old key as a default fallback, but ideally, the env var should always be set.
+SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256" # Algorithm for JWT encoding
 ACCESS_TOKEN_EXPIRE_MINUTES = 30 * 24 * 60  # Token validity: 30 days
 
@@ -22,6 +27,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # Pydantic model for user data (example, not directly used in this file)
 class User(BaseModel):
     username: str
+    salt: str
     hashed_password: str
 
 # Pydantic model for data expected within JWT payload
@@ -29,18 +35,22 @@ class TokenData(BaseModel):
     username: Optional[str] = None
 
 # Verifies a plain text password against a stored hash.
-def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
+def verify_password(plain_password: str, salt: str, hashed_password: str) -> bool:
+    """Verify a password by prepending the salt and matching against the stored hash."""
+    return pwd_context.verify(salt + plain_password, hashed_password)
 
 # Hashes a plain text password using the configured context.
-def get_password_hash(password):
-    return pwd_context.hash(password)
+def get_password_hash(password: str) -> tuple[str, str]:
+    """Generate a unique salt and hash the password with it, returning (salt, hashed_password)."""
+    salt = secrets.token_hex(16)
+    hashed = pwd_context.hash(salt + password)
+    return salt, hashed
 
 # Creates a JWT access token.
 def create_access_token(data: dict):
     to_encode = data.copy()
     # Set token expiration time
-    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     # Encode the payload into a JWT string
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)

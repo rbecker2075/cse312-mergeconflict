@@ -5,20 +5,28 @@ from fastapi import FastAPI, Request, Depends, HTTPException, status, Response, 
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from database import users_collection, sessions_collection, pellet_collection
+from database import users_collection, sessions_collection, skin_collection, playerStats_collection
 from typing import Optional
 import os
 import string
 from auth import get_password_hash, verify_password, create_access_token, hash_token, get_current_user
 from pydantic import BaseModel # Added for request bodies
-import datetime
+from datetime import datetime
 import random
 import time
+import asyncio
+import logging
+from zoneinfo import ZoneInfo
+from uuid import uuid4
+from random import choice
+from pathlib import Path
+
+
 
 app = FastAPI(title='Merge Conflict Game', description='Authentication and Game API', version='1.0')
 
-# Mount 'public/imgs' directory to serve images under '/imgs' path
-app.mount("/imgs", StaticFiles(directory="public/Imgs"), name="imgs")
+# Mount 'public/pictures' directory to serve images under '/pictures' path
+app.mount("/pictures", StaticFiles(directory="public/pictures"), name="pictures")
 
 
 # Mount 'game/static' directory to serve game logic 
@@ -52,8 +60,6 @@ def check_password_complexity(password: str) -> bool:
 
 # --- Routes for Serving Frontend Pages ---
 
-<<<<<<< Updated upstream
-=======
 clients = {}
 active_usernames = set() # Track usernames of currently connected players
 
@@ -449,8 +455,92 @@ async def broadcast_message(message: dict):
             pass
 # --- End Broadcast Helper ---
 
+
+class PlayerStatsResponse(BaseModel):
+    gamesWon: int
+    deaths: int
+    kills: int
+    powerupsUsed: int
+
+
+@app.get("/api/playerStats", response_model=PlayerStatsResponse)
+async def get_player_stats(username: Optional[str] = Depends(get_current_user)):
+    if not username:
+        raise HTTPException(status_code=401, detail="Unauthorized: Username is required")
+
+    # Fetch stats from the database using the username
+    stats = playerStats_collection.find_one({"username": username})
+
+    if not stats:
+        raise HTTPException(status_code=404, detail="Player stats not found")
+
+    # Return stats in the expected format
+    return PlayerStatsResponse(
+        gamesWon=stats["gamesWon"],
+        deaths=stats["deaths"],
+        kills=stats["kills"],
+        powerupsUsed=stats["powerupsUsed"],
+    )
+
+@app.get("/api/playerSprite")
+async def get_player_stats(username: Optional[str] = Depends(get_current_user)):
+    if not username:
+        raise HTTPException(status_code=401, detail="Unauthorized: Username is required")
+
+    # Fetch stats from the database using the username
+    skin = skin_collection.find_one({"username": username})
+
+    if not skin:
+        return {"fileName": "PurplePlanet.png"}
+
+
+
+
+    skinNum = skin.get("selected")
+    selected_skin = "PurplePlanet.png"
+
+    if skinNum == "custom":
+        selected_skin = skin.get("custom")
+    elif skinNum == "skin1"  :
+        selected_skin = "PurplePlanet.png"
+    elif skinNum == "skin2":
+        selected_skin = "RedPlanet.png"
+    elif skinNum == "skin3":
+        selected_skin = "BluePlanet.png"
+
+
+    return {"fileName": selected_skin}
+#{ fileName: 'PurplePlanet.png' }
+
+
+
+class SkinSelection(BaseModel):
+    selectedSkin: str
+
+@app.post("/api/profile")
+async def save_skin(skin: SkinSelection, username: Optional[str] = Depends(get_current_user)):
+    """
+    Save the selected skin for the current user.
+    """
+    if not username:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+
+    try:
+        # Update or insert the skin selection in the database
+        skin_collection.update_one(
+            {"username": username},  # Match by username
+            {"$set": {"selected": skin.selectedSkin}},  # Update the selected field
+            upsert=True  # Create a new document if none exists
+        )
+
+        return {"message": "Skin selection saved successfully", "selected": skin.selectedSkin}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save skin: {str(e)}")
+
+
+
 @app.post("/upload")
-async def upload_file(file: UploadFile):
+async def upload_file(file: UploadFile, username: Optional[str] = Depends(get_current_user)):
     try:
         # Ensure the 'public/pictures' directory exists
         os.makedirs("public/pictures", exist_ok=True)
@@ -463,10 +553,17 @@ async def upload_file(file: UploadFile):
         # Set the static file path in the 'public/pictures' directory
         file_path = os.path.join("public/pictures", file.filename)
 
+
         # Write the file to disk
         with open(file_path, "wb") as f:
             f.write(file_data)
 
+        if username:
+            skin_collection.update_one(
+                {"username": username},
+                {"$set": {"custom": file.filename}},
+                upsert=True  # Insert a new document if no match is found
+            )
         print(f"File successfully uploaded to {file_path}")
 
         # Return the static file path as a response
@@ -477,18 +574,12 @@ async def upload_file(file: UploadFile):
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 
->>>>>>> Stashed changes
 @app.get("/", response_class=FileResponse)
 async def serve_home_page():
     # Serve the main index page
     # Check if file exists? Add error handling if needed.
     return FileResponse("public/index.html")
 
-<<<<<<< Updated upstream
-class Pellet(BaseModel):
-    x: float
-    y: float
-=======
 @app.get("/profile", response_class=FileResponse)
 async def serve_home_page():
     # Serve the main index page
@@ -498,21 +589,7 @@ async def serve_home_page():
 @app.get("/play", response_class=HTMLResponse)
 async def game_page(request: Request):
     return templates.TemplateResponse("game.html", {"request": request})
->>>>>>> Stashed changes
 
-@app.get("/play", response_class=HTMLResponse)
-def play_game():
-    return FileResponse("game/GameBoard.html")
-
-@app.post("/store-pellet")
-def store_pellet(pellet: Pellet):
-    try:
-        pellet_collection.insert_one(pellet.dict())
-        return {"message": "Pellet stored successfully"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to store pellet: {e}")
-#async def game_page(request: Request):
- #   return templates.TemplateResponse("../GameBoard.html", {"request": request})
 @app.get("/login", response_class=FileResponse)
 async def serve_login_page(username: Optional[str] = Depends(get_current_user)):
     # Redirect if already logged in
@@ -538,11 +615,23 @@ async def auth_status(username: Optional[str] = Depends(get_current_user)):
     else:
         return {"logged_in": False}
 
+
+
+
+
+
+
 @app.post("/api/login")
 async def api_login(credentials: UserCredentials = Body(...), response: Response = Response()):
     """Handles user login via API, expects JSON credentials."""
     user = users_collection.find_one({"username": credentials.username})
-    if not user or not verify_password(credentials.password, user["hashed_password"]):
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+        )
+    salt = user.get("salt", "")
+    if not verify_password(credentials.password, salt, user["hashed_password"]):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
@@ -585,6 +674,21 @@ async def api_register(credentials: UserCredentials = Body(...)):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Username cannot be longer than 15 characters."
         )
+    DISALLOWED_CHARS = {
+    '<', '>', '"', "'", '&',   # HTML/XML injection
+    '/', '\\',                 # Path traversal
+    '{', '}', '[', ']',        # Template/JSON injection
+    ';',                       # Command injection
+    '=', '(', ')',             # Code execution risks
+    '|', '!', '`',             # Shell/Pipeline risks
+    '$', '*', '~'              # Regex/special chars
+    }
+    for char in credentials.username:
+        if char in DISALLOWED_CHARS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Username contains invalid characters."
+            )
 
     # Validate password complexity.
     if not check_password_complexity(credentials.password):
@@ -601,13 +705,25 @@ async def api_register(credentials: UserCredentials = Body(...)):
         )
 
     # Hash the password.
-    hashed_password = get_password_hash(credentials.password)
+    salt, hashed_password = get_password_hash(credentials.password)
 
     # Store the new user.
     users_collection.insert_one({
         "username": credentials.username,
+        "salt": salt,
         "hashed_password": hashed_password
     })
+
+
+#default stats
+    new_stats = {
+        "username": credentials.username,
+        "gamesWon": 0,
+        "deaths": 0,
+        "kills": 0,
+        "powerupsUsed": 0
+    }
+    playerStats_collection.insert_one(new_stats)
 
     # Return success status. Frontend JS will handle redirect to login.
     return JSONResponse(content={"message": "Registration successful"}, status_code=status.HTTP_201_CREATED)
@@ -630,12 +746,22 @@ async def logout(response: Response = Response(), session_token: Optional[str] =
     return redirect_response # Return the redirect response
 
 
+# --- Game Specific API Endpoints ---
 
+@app.get("/api/game/status")
+async def get_game_status(username: Optional[str] = Depends(get_current_user)):
+    """Checks if the currently logged-in user is already in an active game."""
+    if username and username in active_usernames:
+        return {"in_game": True}
+    else:
+        return {"in_game": False}
+
+# --- Logging Middleware and Functions (Keep as is) ---
 
 def request_log(request : Request, response : Response ):
    tim = datetime.datetime.now()
-   content = tim.strftime("%m%d%Y, %H:%M:%S") + "\n client" + str(request.client.host)+"\n method" + str(request.method) + "\n url path" + str(request.url.path) + '\n response code' + str(response.status_code)
-   with open("./public/logging/request_logs.txt","a") as f:
+   content ="time: "+ tim.strftime("%m/%d/%Y, %H:%M:%S") + "\n client " + str(request.client.host)+"\n method " + str(request.method) + "\n url path " + str(request.url.path) + '\n response code ' + str(response.status_code) +"\n\n"
+   with open("/request_logs/request_logs.txt", "a") as f:
         f.write(content)
 
 def fullLogging(request : Request, response : Response ):
@@ -645,18 +771,18 @@ def fullLogging(request : Request, response : Response ):
         reqS = reqS + header +": "+ request.headers[header]# need to take out auth tokens and handle cookies better
     req = reqS.encode() + b"\n"
     res = b""
-    with open("./logging/fullreq.txt","ab") as f:
+    with open("/fullreq.txt","ab") as f:
         f.write(req)
-    with open("./logging/fullres.txt","ab") as f:
+    with open("/fullres.txt","ab") as f:
         f.write(res)
 
-#to do docker logging, volume
+#to do docker logs, volume
 def errorLog(error : string, tb : string):
-    content = "error: " + error + "\n" + tb
-    with open("./logging/error_log.txt","b") as f:
+    content = "error: " + error + "\n" + "traceback: "+ tb +"\n\n"
+    with open("/error_log.txt","b") as f:
         f.write(content)
-
-# full request and response logging
+'''
+# full request and response logs
 @app.middleware("http")
 async def reqresLogging(request: Request, call_next):
     #try:
@@ -669,33 +795,108 @@ async def reqresLogging(request: Request, call_next):
     request_log(request,response)
     #fullLogging(request,response)
     return response # Return the actual response now
+'''
 # --- Remove duplicate /login route and /hello/{name} ---
 
 # --- Add main execution block (optional, for running directly) ---
-# if __name__ == "__main__":
-#     uvicorn.run(app, host="0.0.0.0", port=8000)
-
-player_dict = {}# I assume we will update this when we get/lose players #assuming {username:player}
+#if __name__ == "__main__":
+#    uvicorn.run(app, host="0.0.0.0", port=8000)
+leaderboard = []#list of dicts containing size and user
+player_dict = {}#will be added to when new user joins, username:player
 class Player:
     def __init__(self, username):
         self.username = username #these are stand in numbers if you want to change them
-        position_x : int #these I assume will be randomly generated and set after
-        position_y : int
-        self.size = 20
-        self.speed = 5
-        self.debuffs = {"debuff_speed":False,"debuff_size":False }#assuming maybe 2 debuffs and 2 buffs, increase and decrease size and speed temp
-        self.buffs = {"buff_speed":False,"buff_size":False }
+        self.position_x : int
+        self.position_y : int
+        self.size = 20 #starting size
+        #self.speed = 5
+        #self.debuffs = {"debuff_speed":False,"debuff_size":False }#assuming maybe 2 debuffs and 2 buffs, increase and decrease size and speed temp
+        #self.buffs = {"buff_speed":False,"buff_size":False }
 
-def winner(player1, player2):#returns dict with winner and loser
+food_dict ={}
+class Food:
+    def __init__(self, foodId, x,y):
+        self.position_x = x
+        self.position_y = y
+        self.idd = foodId
+
+def recievedMove(jsonMessage: string):#updates the player dict to players new position #does not return json position
+    message = json.loads(jsonMessage)
+    username = message["username"]
+    player = player_dict.get(username)
+    player.position_x = message["x"]
+    player.position_y = message["y"]
+    player_dict[username] = player
+
+#call after new player
+def add_player(jsonMessage: string):
+    message = json.loads(jsonMessage)
+    username = message["username"]
+    player = Player(username)
+    player_dict[username] = player #adds player to player dict
+
+def add_food(jsonMessage: string): #call after new food
+    message = json.loads(jsonMessage)
+    foodId = message["foodId"]
+    x = message["x"]
+    y = message["y"]
+    food = Food(foodId, x,y)
+    food_dict[food.idd] = food
+
+def get_leaderboard():
+    pass
+
+#sends the position, size, username, of all players, sends id and position of all food for new player
+def initial(jsonMessage : string): #creates json object {"type":init,"username":newplayerusername,"players":[{"username":username,'x':int,'y':int,"size":int}...],"foods":[{'idd':str,'x':int,'y':int}...]}
+    dict0 = json.loads(jsonMessage)
+    dict1 = {"type":"init","username":dict0.username}
+    players = []
+    for player in player_dict.values():
+        dict2 = {"username":player.username,"x":player.position_x,"y":player.position_y,"size":player.size}
+        players.append(dict2)
+    foods=[]
+    for food in food_dict.values():
+        dict3 = {"id":food.id,"x":food.position_x,"y":food.position_y}
+        foods.append(dict3)
+    dict1["players"] = players
+    dict1["foods"] = foods
+    jInit = json.dumps(dict1)
+    return jInit
+
+def GetsPositionsJson():#gets the json message of all the positions to all users
+    dict1 = {"type":"update"} #{"type":"update","players":[{"username":str,"x":int,"y":int,"size":int}....]}
+    players = []
+    for player in player_dict.values():
+        dict2 = {"username":player.username,"x":player.position_x,"y":player.position_y, "size":player.size}
+        players.append(dict2)
+    dict1["players"] = players
+    jUpdate = json.dumps(dict1)
+    return jUpdate
+
+#recieves ate food message
+def ate_food(jsonMessage: string):#{"type":"ate_food","username":username,"idd":foodId,"size":player size}
+    message = json.loads(jsonMessage)
+    username = message["username"]
+    foodId = message["idd"]
+    player = player_dict.get(username)
+    player.size = player.size + 1
+    player_dict[username] = player
+    del food_dict[foodId]
+    dict1 = {"type":"ate_food","username":username,"idd":foodId,"size":player.size}
+    jMess = json.dumps(dict1)
+    return jMess
+
+
+def winner(player1, player2):#returns dict with winner and loser #might want to comment out later but I'm unsure if we're deciding who is ate client or server side
     if player1.size > player2.size:
         player1.size += player2.size #player 1 gets player 2 size
-        speed_update(player1) #updates player 1 speed
+        #speed_update(player1) #updates player 1 speed
         player_dict[player1.username] = player1
         del player_dict[player2.username]  # player 2 loses and is deleted from player_dict
         return {"loser":player2,"winner":player1} #return player2 to broadcast defeat?
     elif player1.size < player2.size:
         player2.size += player1.size  # player 1 gets player 2 size
-        speed_update(player2)
+        #speed_update(player2)
         player_dict[player2.username] = player2
         del player_dict[player1.username]
         return {"loser":player1, "winner":player2}
@@ -703,17 +904,19 @@ def winner(player1, player2):#returns dict with winner and loser
         p = random.choice([player1, player2])
         if p.username == player1.username:#player 1 is decided winner
             player1.size += player2.size #increase player 1 by player2 size
-            speed_update(player1) #update speed
+            #speed_update(player1) #update speed
             player_dict[player1.username] = player1
             del player_dict[player2.username]  # del player 2
             return {"loser":player2,"winner":player1} #return player2 to broadcast defeat?
         else:#player 2 is decided winner
             player2.size += player1.size
-            speed_update(player2)
+            #speed_update(player2)
             player_dict[player2.username] = player2
             del player_dict[player1.username]
             return {"loser":player1, "winner":player2}
 
+
+'''''
 def add_buff_debuff(player : Player, buff : string):
     if buff in player.debuffs:
         player.debuffs[buff] = True
@@ -773,8 +976,6 @@ def speed_update(player):
             player.speed = player.speed - 1
     player_dict[player.username] = player
     return player
+'''
 
-def ate_food(player):
-    player.size += 1
-    player = speed_update(player)
-    return player
+

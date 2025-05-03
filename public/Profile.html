@@ -13,6 +13,7 @@
             height: 100vh;
             background: url('pictures/Home_Background.jpg') no-repeat center center fixed;
             font-family: Arial, sans-serif;
+            color: white;
         }
 
         .menu-container {
@@ -25,7 +26,7 @@
         }
 
         .menu-title {
-            font-size: 25px;
+            font-size: 28px;
             font-weight: bold;
             margin-bottom: 20px;
             color: black;
@@ -44,8 +45,8 @@
         }
 
         .skin-button {
-            width: 80px;
-            height: 80px;
+            width: 90px;
+            height: 90px;
             border: 2px solid #ccc;
             border-radius: 5px;
             cursor: pointer;
@@ -63,8 +64,8 @@
             border: 2px solid #9b59b6;
             position: relative;
             overflow: hidden;
-            font-size: 18px;
-            padding: 10px 20px;
+            font-size: 20px;
+            padding: 12px 24px;
             border-radius: 10px;
             cursor: pointer;
             z-index: 0;
@@ -109,92 +110,142 @@
         }
 
         .player-preview img {
-    width: 150px;
-    height: 150px;
-    border-radius: 50%; /* Keeps the circular shape */
-    border: none; /* Removes the border */
-    background-color: transparent; /* Removes background color */
-}
-
+            width: 160px;
+            height: 160px;
+            border-radius: 50%;
+            border: none;
+            background-color: transparent;
+        }
 
         .player-preview-title {
             margin-top: 10px;
-            font-size: 18px;
+            font-size: 20px;
             color: white;
             text-shadow: 1px 1px 2px black;
+        }
+
+        .player-stats {
+            position: absolute;
+            left: 20px;
+            top: 20%;
+            transform: translateY(-20%);
+            background: rgba(0, 0, 0, 0.6);
+            border: 2px solid #9b59b6;
+            border-radius: 10px;
+            padding: 20px;
+            width: 220px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .player-stats h2 {
+            margin-top: 0;
+            font-size: 24px;
+            text-align: center;
+            color: #fff;
+            text-shadow: 1px 1px 2px black;
+        }
+
+        .stat-item {
+            margin: 12px 0;
+            font-size: 18px;
+            color: #ccc;
         }
     </style>
 </head>
 <body>
+    <!-- Player Stats Section -->
+    <div class="player-stats">
+        <h2>Player Stats</h2>
+        <div class="stat-item">Games Won: <span id="games-won">0</span></div>
+        <div class="stat-item">Deaths: <span id="deaths">0</span></div>
+        <div class="stat-item">Player kills: <span id="kills">0</span></div>
+        <div class="stat-item">Powerups Used: <span id="powerups-used">0</span></div>
+    </div>
+
+    <!-- Skin Selection Menu -->
     <div class="menu-container">
         <div class="menu-title">Choose Your Skin</div>
         <div class="button-container" id="skins-container">
             <div class="skin-button" id="skin1" style="background-image: url('pictures/PurplePlanet.png');"></div>
             <div class="skin-button" id="skin2" style="background-image: url('pictures/RedPlanet.png');"></div>
             <div class="skin-button" id="skin3" style="background-image: url('pictures/BluePlanet.png');"></div>
-            <div class="skin-button" id="custom-skin" style="display: none;"></div>
+            <div class="skin-button" id="custom" style="display: none;"></div>
         </div>
-        <button class="btn-border-reveal" id="start-button">Back</button>
+        <button class="btn-border-reveal" id="back">Back</button>
         <button class="btn-border-reveal" id="upload-button">Upload Skin</button>
         <input type="file" id="file-upload" accept="image/*">
     </div>
 
+    <!-- Player Preview -->
     <div class="player-preview">
         <img id="player-preview-image" src="pictures/PurplePlanet.png" alt="Player Preview">
         <div class="player-preview-title">Your Player</div>
     </div>
 
     <script>
-        let selectedSkin = "skin1";
-        const customSkinButton = document.getElementById('custom-skin');
+        let selectedSkin = "skin1"; // Default selected skin
+        const customSkinButton = document.getElementById('custom');
         const previewImage = document.getElementById('player-preview-image');
+
+        // Fetch player stats on page load
+        window.onload = () => {
+            fetch('/api/playerStats')
+                .then(response => response.json())
+                .then(data => {
+                    // Update the player stats in the UI
+                    document.getElementById('games-won').textContent = data.gamesWon || 0;
+                    document.getElementById('deaths').textContent = data.deaths || 0;
+                    document.getElementById('kills').textContent = data.kills || 0;
+                    document.getElementById('powerups-used').textContent = data.powerupsUsed || 0;
+                })
+                .catch(error => console.error('Error fetching player stats:', error));
+        };
+
+        document.getElementById('back').addEventListener('click', () => {
+            window.location.href = '/'; // Replace with the actual path to the index page
+        });
 
         // Handle skin button clicks
         document.querySelectorAll('.skin-button').forEach(button => {
             button.addEventListener('click', () => {
-                // Deselect all buttons
                 document.querySelectorAll('.skin-button').forEach(btn => btn.classList.remove('selected'));
-
-                // Select the clicked button
                 button.classList.add('selected');
+                previewImage.src = button.style.backgroundImage.slice(5, -2);
                 selectedSkin = button.id;
 
-                // Update the player preview image
-                previewImage.src = button.style.backgroundImage.slice(5, -2);
+                fetch('/api/profile', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ selectedSkin: selectedSkin }),
+                })
+                .then(response => response.json())
+                .then(data => console.log('Skin saved successfully:', data))
+                .catch(error => console.error('Error saving skin:', error));
             });
         });
 
-        // Handle upload button click
         document.getElementById('upload-button').addEventListener('click', () => {
             document.getElementById('file-upload').click();
         });
 
-        // Handle file upload
         document.getElementById('file-upload').addEventListener('change', (event) => {
             const file = event.target.files[0];
             if (file) {
                 const formData = new FormData();
                 formData.append('file', file);
 
-                // Send the file to the server
-                fetch('/upload', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(response => response.json()) // Expect a JSON response with the file path
-                .then(data => {
-                    if (data.file_path) {
-                        // Update the custom skin button with the uploaded image
-                        customSkinButton.style.backgroundImage = `url(${data.file_path})`;
-                        customSkinButton.style.display = 'block';
-                        customSkinButton.click();
-                    } else {
-                        throw new Error('No file path returned');
-                    }
-                })
-                .catch(error => {
-                    console.error('Error uploading file:', error);
-                });
+                fetch('/upload', { method: 'POST', body: formData })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.file_path) {
+                            customSkinButton.style.backgroundImage = `url(${data.file_path})`;
+                            customSkinButton.style.display = 'block';
+                            customSkinButton.click();
+                        } else {
+                            throw new Error('No file path returned');
+                        }
+                    })
+                    .catch(error => console.error('Error uploading file:', error));
             }
         });
     </script>
