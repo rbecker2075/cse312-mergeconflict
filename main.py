@@ -229,7 +229,8 @@ async def log_requests_and_responses(request: Request, call_next):
         tok = request.cookies.get("session_token")
         hash_tok = hash_token(tok)
         dicty = sessions_collection.find_one({"token_hash": hash_tok})
-        username = dicty["username"]
+        if dicty is not None:
+            username = dicty["username"]
     #start_time = time.time()
     client_ip = request.headers.get("x-real-ip", request.client.host if request.client else "unknown")
     log_entry = []
