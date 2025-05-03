@@ -15,5 +15,6 @@ except Exception as e:
 db = client.app_database
 users_collection = db.users
 sessions_collection = db.sessions
+leaderboard_stats_collection = db.leaderboard_stats
 
 print("Database collections initialized.")
