@@ -1031,9 +1031,3 @@ def speed_update(player):
     player_dict[player.username] = player
     return player
 '''
-
-
-
-@app.get("/hello/{name}")
-async def say_hello(name: str):
-    return {"message": f"Hello {name}"}

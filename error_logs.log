@@ -1,0 +1,108 @@
+2025-05-01 20:56:06,921 - error_logger - ERROR - '_StreamingResponse' object has no attribute 'status'
+  File "/usr/local/bin/uvicorn", line 8, in <module>
+    sys.exit(main())
+  File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1161, in __call__
+    return self.main(*args, **kwargs)
+  File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1082, in main
+    rv = self.invoke(ctx)
+  File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1443, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "/usr/local/lib/python3.11/site-packages/click/core.py", line 788, in invoke
+    return __callback(*args, **kwargs)
+  File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 413, in main
+    run(
+  File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 580, in run
+    server.run()
+  File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 66, in run
+    return asyncio.run(self.serve(sockets=sockets))
+  File "/usr/local/lib/python3.11/asyncio/runners.py", line 190, in run
+    return runner.run(main)
+  File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+  File "/usr/local/lib/python3.11/site-packages/uvicorn/protocols/http/httptools_impl.py", line 409, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+  File "/usr/local/lib/python3.11/site-packages/uvicorn/middleware/proxy_headers.py", line 60, in __call__
+    return await self.app(scope, receive, send)
+  File "/usr/local/lib/python3.11/site-packages/fastapi/applications.py", line 1054, in __call__
+    await super().__call__(scope, receive, send)
+  File "/usr/local/lib/python3.11/site-packages/starlette/applications.py", line 112, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/usr/local/lib/python3.11/site-packages/starlette/middleware/errors.py", line 165, in __call__
+    await self.app(scope, receive, _send)
+  File "/usr/local/lib/python3.11/site-packages/starlette/middleware/base.py", line 178, in __call__
+    response = await self.dispatch_func(request, call_next)
+  File "/app/main.py", line 269, in log_requests_and_responses
+    tb = traceback.extract_stack()
+
+
+2025-05-01 21:11:05,943 - error_logger - ERROR - '_StreamingResponse' object has no attribute 'status'
+Traceback (most recent call last):
+  File "/app/main.py", line 264, in log_requests_and_responses
+    stat = str(response.status)
+               ^^^^^^^^^^^^^^^
+AttributeError: '_StreamingResponse' object has no attribute 'status'
+
+
+2025-05-01 21:11:05,991 - error_logger - ERROR - '_StreamingResponse' object has no attribute 'status'
+Traceback (most recent call last):
+  File "/app/main.py", line 264, in log_requests_and_responses
+    stat = str(response.status)
+               ^^^^^^^^^^^^^^^
+AttributeError: '_StreamingResponse' object has no attribute 'status'
+
+
+2025-05-03 15:05:31,417 - error_logger - ERROR - division by zero
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/starlette/middleware/base.py", line 148, in call_next
+    message = await recv_stream.receive()
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/anyio/streams/memory.py", line 111, in receive
+    return self.receive_nowait()
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/anyio/streams/memory.py", line 104, in receive_nowait
+    raise EndOfStream
+anyio.EndOfStream
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/app/main.py", line 270, in log_requests_and_responses
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/starlette/middleware/base.py", line 156, in call_next
+    raise app_exc
+  File "/usr/local/lib/python3.11/site-packages/starlette/middleware/base.py", line 141, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "/usr/local/lib/python3.11/site-packages/starlette/middleware/exceptions.py", line 62, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/usr/local/lib/python3.11/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/usr/local/lib/python3.11/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/usr/local/lib/python3.11/site-packages/starlette/routing.py", line 714, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/usr/local/lib/python3.11/site-packages/starlette/routing.py", line 734, in app
+    await route.handle(scope, receive, send)
+  File "/usr/local/lib/python3.11/site-packages/starlette/routing.py", line 288, in handle
+    await self.app(scope, receive, send)
+  File "/usr/local/lib/python3.11/site-packages/starlette/routing.py", line 76, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/usr/local/lib/python3.11/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/usr/local/lib/python3.11/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/usr/local/lib/python3.11/site-packages/starlette/routing.py", line 73, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/fastapi/routing.py", line 301, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/fastapi/routing.py", line 212, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/main.py", line 647, in serve_home_page
+    i = 1/0
+        ~^~
+ZeroDivisionError: division by zero
+
+
