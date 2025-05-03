@@ -5,7 +5,7 @@ from fastapi import FastAPI, Request, Depends, HTTPException, status, Response, 
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from database import users_collection, sessions_collection
+from database import users_collection, sessions_collection, leaderboard_stats_collection
 from typing import Optional
 import os
 import string
@@ -75,6 +75,31 @@ def generate_food():
             "y": random.randint(0, worldHeight),
             "id": str(uuid4())
         })
+
+# --- Helper Function to update persistent score ---
+async def update_total_score(username: str, score_increase: int):
+    if not username: # Don't track scores for guests
+        return
+    if score_increase <= 0: # Don't record zero or negative score changes
+        return
+    try:
+        leaderboard_stats_collection.update_one(
+            {"username": username},
+            {"$inc": {"total_score": score_increase}},
+            upsert=True
+        )
+        print(f"Updated total score for {username} by {score_increase}")
+        # --- Update lifetime score and check achievements ---
+        users_collection.update_one(
+            {"username": username},
+            {"$inc": {"total_score_lifetime": score_increase}},
+            # No upsert needed here, user must exist if we are updating score
+        )
+        # Check for achievements after score update
+        asyncio.create_task(check_and_grant_achievements(username))
+        # --- End Achievement Check ---
+    except Exception as e:
+        print(f"Error updating total score for {username}: {e}")
 
 # --- Helper Function for Delayed Respawn ---
 async def schedule_respawn(loser_id: str):
@@ -381,8 +406,11 @@ async def game_ws(websocket: WebSocket):
             
             if time_remaining <= 0 and game_start_time is not None:
                 # Game over - determine winner
-                winner = max(clients.items(), key=lambda x: x[1]["power"])
-                winner_username = winner[1]["username"] or "Guest"
+                winner_username = "Guest"
+                if clients: # Check if any clients are left to determine a winner
+                    winner = max(clients.items(), key=lambda x: x[1]["power"])
+                    winner_username = winner[1].get("username") or "Guest"
+
                 winner_display_duration = 5 # How long to show winner name
                 reset_countdown_duration = 10 # How long the "New game starting" countdown lasts
                 
@@ -417,6 +445,29 @@ async def game_ws(websocket: WebSocket):
                 # Wait for the countdown duration before actually resetting
                 await asyncio.sleep(reset_countdown_duration)
                 
+                # --- Update persistent scores for all remaining players --- 
+                update_tasks = []
+                games_played_updates = [] # Track users whose games_played needs update
+                for client_id, client_info in list(clients.items()): # Iterate over a copy
+                    if client_id in clients: # Check if still connected
+                        username = client_info.get("username")
+                        score = client_info.get("power", 0)
+                        if username:
+                            update_tasks.append(update_total_score(username, score))
+                            games_played_updates.append(username)
+                if update_tasks:
+                    await asyncio.gather(*update_tasks)
+                # --- Update games played count & check achievements --- 
+                if games_played_updates:
+                    users_collection.update_many(
+                        {"username": {"$in": games_played_updates}},
+                        {"$inc": {"games_played": 1}}
+                    )
+                    # Check achievements for all players who finished the game
+                    achievement_check_tasks = [check_and_grant_achievements(uname) for uname in games_played_updates]
+                    await asyncio.gather(*achievement_check_tasks)
+                # --- End Games Played Update ---
+
                 # Reset game state
                 game_start_time = time.time()  # Reset timer
                 generate_food()  # Generate new food
@@ -455,6 +506,12 @@ async def game_ws(websocket: WebSocket):
                 if distance < 50:  # Increased from 30 to 50 for food collection radius
                     food_to_remove.append(food)
                     clients[player_id]["power"] += 1
+                    # --- Check score achievements after power increase ---
+                    current_username = clients[player_id].get("username")
+                    current_power = clients[player_id]["power"]
+                    if current_username:
+                        asyncio.create_task(check_in_game_score_achievements(current_username, current_power))
+                    # --- End Achievement Check ---
             
             # Remove collected food and notify all clients
             if food_to_remove:
@@ -511,11 +568,13 @@ async def game_ws(websocket: WebSocket):
                             winner_id, loser_id = p2_id, p1_id
                         else: # Tie
                             chosen_winner = random.choice([p1_id, p2_id])
-                            winner_id = chosen_winner
-                            loser_id = p2_id if chosen_winner == p1_id else p1_id
+                            if chosen_winner == p1_id:
+                                winner_id, loser_id = p1_id, p2_id
+                            else:
+                                winner_id, loser_id = p2_id, p1_id
 
                         # Process the win/loss if winner and loser are determined
-                        if winner_id and loser_id:
+                        if winner_id and loser_id and winner_id in clients and loser_id in clients: # Double check clients exist
                             winner = clients[winner_id]
                             loser = clients[loser_id]
                             
@@ -527,13 +586,23 @@ async def game_ws(websocket: WebSocket):
                             loser["power"] = 1
                             loser["is_respawning"] = True # <<< SET RESPAWNING FLAG
                             
-                            # Send "eaten" message to loser
-                            try:
-                                loser_ws = loser["ws"]
-                                asyncio.create_task(loser_ws.send_json({"type": "eaten"}))
-                            except Exception as e:
-                                print(f"Error sending 'eaten' message to {loser_id}: {e}")
-                            
+                            # --- Check winner's score achievements after power increase ---
+                            winner_username = winner.get("username") # Already got this above
+                            new_winner_power = winner["power"]
+                            if winner_username:
+                                asyncio.create_task(check_in_game_score_achievements(winner_username, new_winner_power))
+                            # --- End Score Achievement Check ---
+
+                            # --- Update winner's eaten count & check achievements ---
+                            winner_username = winner.get("username")
+                            if winner_username:
+                                users_collection.update_one(
+                                    {"username": winner_username},
+                                    {"$inc": {"players_eaten_lifetime": 1}}
+                                )
+                                asyncio.create_task(check_and_grant_achievements(winner_username))
+                            # --- End Eaten Count Update ---
+
                             # Schedule the respawn task for the loser
                             asyncio.create_task(schedule_respawn(loser_id))
 
@@ -573,18 +642,28 @@ async def game_ws(websocket: WebSocket):
             # Clean up clients that caused errors during broadcast
             for pid in clients_to_remove:
                 if pid in clients:
-                    disconnected_username = clients[pid].get("username")
+                    disconnected_client = clients.pop(pid)
+                    disconnected_username = disconnected_client.get("username")
+                    disconnected_score = disconnected_client.get("power", 0)
                     if disconnected_username:
                         active_usernames.discard(disconnected_username)
-                    del clients[pid]
+                        # --- Update score on disconnect --- 
+                        await update_total_score(disconnected_username, disconnected_score)
+                        # --- End score update --- 
                     # No need to broadcast removal here, as they already disconnected
 
     except WebSocketDisconnect:
-        # Player disconnecting logic: remove the user from active_usernames and clients
-        disconnected_username = clients[player_id].get("username")
-        if disconnected_username:
-            active_usernames.discard(disconnected_username)
-        clients.pop(player_id, None)
+        # Player disconnecting logic
+        disconnected_client = clients.pop(player_id, None)
+        if disconnected_client:
+            disconnected_username = disconnected_client.get("username")
+            disconnected_score = disconnected_client.get("power", 0)
+            if disconnected_username:
+                active_usernames.discard(disconnected_username)
+                # --- Update score on disconnect --- 
+                await update_total_score(disconnected_username, disconnected_score)
+                # --- End score update --- 
+            print(f"Player {player_id} disconnected.") # Removed broadcast remove message
 
 
 # --- Helper Function to Broadcast Messages --- 
@@ -726,7 +805,13 @@ async def api_register(credentials: UserCredentials = Body(...)):
     users_collection.insert_one({
         "username": credentials.username,
         "salt": salt,
-        "hashed_password": hashed_password
+        "hashed_password": hashed_password,
+        # --- Initialize Achievement Stats ---
+        "total_score_lifetime": 0,
+        "games_played": 0,
+        "players_eaten_lifetime": 0,
+        "unlocked_achievements": []
+        # --- End Achievement Stats ---
     })
 
     # Return success status. Frontend JS will handle redirect to login.
@@ -759,6 +844,58 @@ async def get_game_status(username: Optional[str] = Depends(get_current_user)):
         return {"in_game": True}
     else:
         return {"in_game": False}
+
+@app.get("/api/leaderboard")
+async def get_leaderboard_data():
+    """Retrieves the top 20 players based on total accumulated score."""
+    try:
+        top_players = list(
+            leaderboard_stats_collection.find({}, {"_id": 0, "username": 1, "total_score": 1})
+                                        .sort("total_score", -1)
+                                        .limit(20)
+        )
+        return JSONResponse(content=top_players)
+    except Exception as e:
+        print(f"Error fetching leaderboard data: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not retrieve leaderboard data."
+        )
+
+# --- Achievements API Endpoint ---
+@app.get("/api/achievements")
+async def get_user_achievements(username: str = Depends(get_current_user)):
+    """Retrieves the status of all achievements for the logged-in user."""
+    if not username:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated"
+        )
+
+    print(f"[Achievements API] Attempting to find user: {username}") # Add logging
+    user_data = users_collection.find_one({"username": username}, {"_id": 0, "unlocked_achievements": 1})
+    print(f"[Achievements API] Result of find_one for {username}: {user_data}") # Add logging
+
+    if user_data is None:
+        # This shouldn't happen if the user is authenticated, but handle defensively
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User data not found."
+        )
+
+    unlocked_ids = set(user_data.get("unlocked_achievements", []))
+    all_achievements_status = []
+
+    for ach_id, details in ACHIEVEMENTS.items():
+        all_achievements_status.append({
+            "id": ach_id,
+            "name": details["name"],
+            "description": details["description"],
+            "unlocked": ach_id in unlocked_ids
+        })
+
+    return JSONResponse(content=all_achievements_status)
+# --- End Achievements API Endpoint ---
 
 # --- Logging Middleware and Functions (Keep as is) ---
 
@@ -982,4 +1119,127 @@ def speed_update(player):
     return player
 '''
 
+# --- Achievement Definitions ---
+ACHIEVEMENTS = {
+    # Score Achievements
+    "score_30": {"name": "Point Novice", "description": "Reach a total lifetime score of 30 points.", "criteria": lambda stats: stats.get("total_score_lifetime", 0) >= 30},
+    "score_60": {"name": "Point Adept", "description": "Reach a total lifetime score of 60 points.", "criteria": lambda stats: stats.get("total_score_lifetime", 0) >= 60},
+    "score_90": {"name": "Point Master", "description": "Reach a total lifetime score of 90 points.", "criteria": lambda stats: stats.get("total_score_lifetime", 0) >= 90},
+    # Games Played Achievements
+    "played_1": {"name": "First Game!", "description": "Play your first game.", "criteria": lambda stats: stats.get("games_played", 0) >= 1},
+    "played_5": {"name": "Getting Started", "description": "Play 5 games.", "criteria": lambda stats: stats.get("games_played", 0) >= 5},
+    "played_10": {"name": "Regular Player", "description": "Play 10 games.", "criteria": lambda stats: stats.get("games_played", 0) >= 10},
+    # Players Eaten Achievements
+    "eaten_1": {"name": "First Bite", "description": "Eat your first player.", "criteria": lambda stats: stats.get("players_eaten_lifetime", 0) >= 1},
+    "eaten_5": {"name": "Cannibal", "description": "Eat 5 players.", "criteria": lambda stats: stats.get("players_eaten_lifetime", 0) >= 5},
+    "eaten_20": {"name": "Apex Predator", "description": "Eat 20 players.", "criteria": lambda stats: stats.get("players_eaten_lifetime", 0) >= 20},
+}
+# --- End Achievement Definitions ---
 
+# --- Achievement Helper Function ---
+async def check_and_grant_achievements(username: str):
+    """Checks and grants achievements based on LIFETIME stats (games played, eaten)."""
+    if not username:
+        return # Only logged-in users get achievements
+
+    # Fetch only the stats needed for lifetime checks + unlocked list
+    user_data = users_collection.find_one({"username": username}, {"_id": 0, "unlocked_achievements": 1, "games_played": 1, "players_eaten_lifetime": 1})
+    if not user_data:
+        print(f"[Achievements] User not found: {username}")
+        return
+
+    current_achievements = set(user_data.get("unlocked_achievements", []))
+    newly_unlocked = []
+
+    for achievement_id, details in ACHIEVEMENTS.items():
+        # --- Skip score achievements, handled by check_in_game_score_achievements ---
+        if achievement_id.startswith("score_"):
+            continue
+        # --- End Skip ---
+
+        if achievement_id not in current_achievements:
+            if details["criteria"](user_data): # Pass the whole user_data dict
+                newly_unlocked.append(achievement_id)
+
+    if newly_unlocked:
+        print(f"[Achievements] User {username} unlocked: {newly_unlocked}")
+        # Update database
+        users_collection.update_one(
+            {"username": username},
+            {"$addToSet": {"unlocked_achievements": {"$each": newly_unlocked}}}
+        )
+
+        # Send notifications via WebSocket
+        for client_id, client_info in clients.items():
+            if client_info.get("username") == username:
+                ws = client_info.get("ws")
+                if ws:
+                    for ach_id in newly_unlocked:
+                        try:
+                            await ws.send_json({
+                                "type": "achievement_unlocked",
+                                "achievement": {
+                                    "id": ach_id,
+                                    "name": ACHIEVEMENTS[ach_id]["name"],
+                                    "description": ACHIEVEMENTS[ach_id]["description"]
+                                }
+                            })
+                            print(f"[Achievements] Sent notification for {ach_id} to {username}")
+                        except Exception as e:
+                            print(f"[Achievements] Error sending notification to {username}: {e}")
+                break
+
+# --- New Helper for In-Game Score Achievements ---
+async def check_in_game_score_achievements(username: str, current_power: int):
+    """Checks and grants score achievements based on current in-game power."""
+    if not username:
+        return
+
+    # Fetch only unlocked achievements to avoid duplicate checks/grants
+    user_data = users_collection.find_one({"username": username}, {"_id": 0, "unlocked_achievements": 1})
+    if user_data is None: # Check explicitly for None
+        print(f"[AchievementsScore] User not found: {username}")
+        return
+
+    current_achievements = set(user_data.get("unlocked_achievements", []))
+    newly_unlocked = []
+
+    for achievement_id, details in ACHIEVEMENTS.items():
+        # Only check score achievements
+        if not achievement_id.startswith("score_"):
+            continue
+
+        if achievement_id not in current_achievements:
+            # Evaluate criteria using current_power, passed as the expected stat name
+            temp_stats = {"total_score_lifetime": current_power} # Simulate stats dict for lambda
+            if details["criteria"](temp_stats):
+                newly_unlocked.append(achievement_id)
+
+    if newly_unlocked:
+        print(f"[AchievementsScore] User {username} unlocked score achievements: {newly_unlocked} with power {current_power}")
+        # Update database
+        users_collection.update_one(
+            {"username": username},
+            {"$addToSet": {"unlocked_achievements": {"$each": newly_unlocked}}}
+        )
+
+        # Send notifications via WebSocket
+        for client_id, client_info in clients.items():
+            if client_info.get("username") == username:
+                ws = client_info.get("ws")
+                if ws:
+                    for ach_id in newly_unlocked:
+                        try:
+                            await ws.send_json({
+                                "type": "achievement_unlocked",
+                                "achievement": {
+                                    "id": ach_id,
+                                    "name": ACHIEVEMENTS[ach_id]["name"],
+                                    "description": ACHIEVEMENTS[ach_id]["description"]
+                                }
+                            })
+                            print(f"[AchievementsScore] Sent notification for {ach_id} to {username}")
+                        except Exception as e:
+                            print(f"[AchievementsScore] Error sending notification to {username}: {e}")
+                break
+# --- End In-Game Score Helper ---
