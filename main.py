@@ -1,3 +1,5 @@
+import hashlib
+import traceback
 import uvicorn
 import asyncio
 import json
@@ -20,13 +22,11 @@ from zoneinfo import ZoneInfo
 from uuid import uuid4
 from random import choice
 from pathlib import Path
-
+#from traceback import extract_stack, format_list
 app = FastAPI(title='Merge Conflict Game', description='Authentication and Game API', version='1.0')
 
-# Mount 'public/pictures' directory to serve images under '/pictures' path
-app.mount("/pictures", StaticFiles(directory="public/pictures"), name="pictures")
 
-# Mount 'game/static' directory to serve game logic 
+# Mount 'game/static' directory to serve game logic
 app.mount("/game/static", StaticFiles(directory="game/static"), name="game-static")
 
 templates = Jinja2Templates(directory="game/templates")
@@ -87,17 +87,17 @@ async def schedule_respawn(loser_id: str):
         clients[loser_id]["x"] = new_x
         clients[loser_id]["y"] = new_y
         # Note: Power was already reset to 1 earlier
-        
+
         loser_ws = clients[loser_id]["ws"]
         try:
             await loser_ws.send_json({
-                "type": "respawn", 
-                "x": new_x, 
+                "type": "respawn",
+                "x": new_x,
                 "y": new_y
             })
             # Clear the respawning flag now that they have respawned
             clients[loser_id]["is_respawning"] = False
-            
+
             # Make player invulnerable after respawn
             clients[loser_id]["isInvulnerable"] = True
             invulnerability_duration = 10 # Match client-side setting
@@ -135,7 +135,7 @@ request_logger.setLevel(logging.INFO)
 # Prevent adding multiple handlers
 if not request_logger.handlers:
     file_handler = logging.FileHandler(LOG_FILE)
-    log_format = '%(asctime)s - %(client_ip)s - %(method)s - %(path)s'
+    log_format = '%(asctime)s - %(client_ip)s - %(method)s - %(path)s - %(message)s'
     formatter = logging.Formatter(log_format)
     # Uncomment the next line if using the custom time converter
     # formatter.converter = adjusted_localtime_converter
@@ -202,21 +202,34 @@ def filter_headers(headers: dict, is_response_headers: bool = False) -> dict:
         else:
             filtered[key] = value
     return filtered
+ERROR_FILE = Path("/app/host_mount/error_logs.log")
+REG_LOGIN_FILE = Path("/app/host_mount/reg_login.log")
+error_logger = logging.getLogger("error_logger")
+error_logger.setLevel(logging.ERROR)
+loginReg_logger = logging.getLogger("login_reg_logger")
+loginReg_logger.setLevel(logging.INFO)
+if not error_logger.handlers:#honestly not sure if this line is needed but the other one has it and I should try to be consistent
+    error_handler = logging.FileHandler(ERROR_FILE)
+    error_handler.setLevel(logging.ERROR)
+    error_handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s\n"))
+    error_logger.addHandler(error_handler)
+if not loginReg_logger.handlers:
+    login_handler = logging.FileHandler(REG_LOGIN_FILE)
+    login_handler.setLevel(logging.INFO)
+    login_handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s\n"))
+    loginReg_logger.addHandler(login_handler)
+
 @app.middleware("http")
 async def log_requests_and_responses(request: Request, call_next):
-    start_time = time.time()
+    username = ''
+    if "session_token" in request.cookies:
+        tok = request.cookies.get("session_token")
+        hash_tok = hash_token(tok)
+        dicty = sessions_collection.find_one({"token_hash": hash_tok})
+        username = dicty["username"]
+    #start_time = time.time()
     client_ip = request.headers.get("x-real-ip", request.client.host if request.client else "unknown")
-
-    # --- Basic Request Logging (Before handling) ---
-    request_logger.info("", extra={
-        "client_ip": client_ip,
-        "method": request.method,
-        "path": request.url.path
-    })
-
-    # --- Full Request/Response Logging ---
     log_entry = []
-
     # 1. Log Request Line and Headers
     req_headers = dict(request.headers)
     filtered_req_headers = filter_headers(req_headers)
@@ -224,10 +237,8 @@ async def log_requests_and_responses(request: Request, call_next):
     for key, value in filtered_req_headers.items():
         log_entry.append(f"{key}: {value}")
     log_entry.append("") # Blank line before body
-
     # 2. Log Request Body (conditionally)
     request_body = await request.body() # Read body ONCE
-
     # Check if path requires body redaction (login/register)
     should_redact_body = request.method == "POST" and request.url.path in SENSITIVE_PATHS
 
@@ -248,25 +259,29 @@ async def log_requests_and_responses(request: Request, call_next):
                 log_entry.append(f"[Error decoding request body as text: {e}]")
         else:
             log_entry.append("[Non-text request body]")
-
     log_entry.append("-" * 20) # Separator
-
     # --- Pass request (with potentially consumed body) to the endpoint ---
     # Need to provide the body again if it was consumed. FastAPI/Starlette handles this
     # reasonably well if you await request.body() before call_next.
     # If issues arise, a more complex approach involving Request stream wrapping is needed.
-
     # --- Call the endpoint and get response ---
+    #response = Response()
     try:
         response = await call_next(request)
-        process_time = time.time() - start_time
-        response.headers["X-Process-Time"] = str(process_time) # Optional: Add process time header
+        stat = str(response.status_code)
+        #process_time = time.time() - start_time
+        #response.headers["X-Process-Time"] = str(process_time) # Optional: Add process time header
     except Exception as e:
+        err_s = str(e)
+        tbs = traceback.format_exc()
+        combo = err_s + "\n" + tbs
+        error_logger.error(combo)
+        #return e
         # Log exceptions if the request handling itself fails
-        full_logger.error(f"Exception during request processing: {e}", exc_info=True)
+        #full_logger.error(f"Exception during request processing: {e}", exc_info=True)
         # Re-raise or return a generic error response
-        raise e # Or return Response("Internal Server Error", status_code=500)
-
+        #raise e # Or
+        return Response("Internal Server Error", status_code=500)
     # 3. Log Response Status and Headers
     res_headers = dict(response.headers)
     filtered_res_headers = filter_headers(res_headers, is_response_headers=True)
@@ -276,7 +291,6 @@ async def log_requests_and_responses(request: Request, call_next):
     for key, value in filtered_res_headers.items():
         log_entry.append(f"{key}: {value}")
     log_entry.append("") # Blank line before body
-
     # 4. Log Response Body (conditionally and carefully)
     resp_body_content = b""
     if isinstance(response, StreamingResponse):
@@ -307,17 +321,42 @@ async def log_requests_and_responses(request: Request, call_next):
                  log_entry.append(f"[Error decoding response body as text: {e}]")
         else:
             log_entry.append("[Non-text response body]")
-
-
     # 5. Write the combined entry to the full log file
     full_logger.info("\n".join(log_entry))
-
+    request_logger.info("Username: "+ username +" Response Status: "+ stat, extra={
+        "client_ip": client_ip,
+        "method": request.method,
+        "path": request.url.path,
+    })
     return response
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 @app.websocket("/ws/game")
 async def game_ws(websocket: WebSocket):
     global game_start_time, food_instances, active_usernames
-    
+
     # --- Check for existing connection for logged-in users ---
     session_token = websocket.cookies.get("session_token")
     username = None
@@ -336,10 +375,10 @@ async def game_ws(websocket: WebSocket):
     if game_start_time is None and len(clients) == 0:
         game_start_time = time.time()
         generate_food()  # Generate initial food
-    
+
     await websocket.accept()
     player_id = str(uuid4())
-    
+
     # Get the session token from cookies (already done above, reuse username)
     # session_token = websocket.cookies.get("session_token")
     # username = None
@@ -351,10 +390,10 @@ async def game_ws(websocket: WebSocket):
         active_usernames.add(username)
 
     clients[player_id] = {
-        "ws": websocket, 
+        "ws": websocket,
         "x": worldWidth / 2,  # Spawn in center
         "y": worldHeight / 2,  # Spawn in center
-        "power": 1, 
+        "power": 1,
         "username": username,
         "is_respawning": False,
         "isInvulnerable": True # Player starts invulnerable
@@ -367,7 +406,7 @@ async def game_ws(websocket: WebSocket):
     # Send back the ID, game time remaining, and initial food positions
     time_remaining = max(0, game_duration - (time.time() - game_start_time)) if game_start_time else game_duration
     await websocket.send_json({
-        "type": "id", 
+        "type": "id",
         "id": player_id,
         "time_remaining": time_remaining,
         "food": food_instances
@@ -378,14 +417,14 @@ async def game_ws(websocket: WebSocket):
             # Check if game time is up
             current_time = time.time()
             time_remaining = max(0, game_duration - (current_time - game_start_time)) if game_start_time else game_duration
-            
+
             if time_remaining <= 0 and game_start_time is not None:
                 # Game over - determine winner
                 winner = max(clients.items(), key=lambda x: x[1]["power"])
                 winner_username = winner[1]["username"] or "Guest"
                 winner_display_duration = 5 # How long to show winner name
                 reset_countdown_duration = 10 # How long the "New game starting" countdown lasts
-                
+
                 # Send game over message to all clients
                 for client in clients.values():
                     try:
@@ -396,18 +435,18 @@ async def game_ws(websocket: WebSocket):
                     except:
                         print(f"Error sending game_over message to a client.")
                         pass # Ignore errors for disconnected clients
-                
-                # --- Make all players invulnerable during reset countdown --- 
+
+                # --- Make all players invulnerable during reset countdown ---
                 for pid in clients:
                     if pid in clients: # Check they didn't disconnect right now
-                        clients[pid]["isInvulnerable"] = True 
+                        clients[pid]["isInvulnerable"] = True
                         clients[pid]["is_respawning"] = False # Ensure this is false too
-                # --- End Invulnerability Set --- 
+                # --- End Invulnerability Set ---
 
                 # Wait briefly for winner display
                 await asyncio.sleep(winner_display_duration)
 
-                # --- Send pre-reset countdown trigger --- 
+                # --- Send pre-reset countdown trigger ---
                 await broadcast_message({
                     "type": "pre_reset_timer",
                     "duration": reset_countdown_duration
@@ -416,7 +455,7 @@ async def game_ws(websocket: WebSocket):
 
                 # Wait for the countdown duration before actually resetting
                 await asyncio.sleep(reset_countdown_duration)
-                
+
                 # Reset game state
                 game_start_time = time.time()  # Reset timer
                 generate_food()  # Generate new food
@@ -429,7 +468,7 @@ async def game_ws(websocket: WebSocket):
                     clients[client_id]["isInvulnerable"] = True # Grant invulnerability
                     # Start timer to end invulnerability
                     asyncio.create_task(end_invulnerability(client_id, invulnerability_duration))
-                
+
                 # Send reset message to all clients
                 for client in clients.values():
                     try:
@@ -449,13 +488,13 @@ async def game_ws(websocket: WebSocket):
             player_x = clients[player_id]["x"]
             player_y = clients[player_id]["y"]
             food_to_remove = []
-            
+
             for food in food_instances:
                 distance = ((player_x - food["x"]) ** 2 + (player_y - food["y"]) ** 2) ** 0.5
                 if distance < 50:  # Increased from 30 to 50 for food collection radius
                     food_to_remove.append(food)
                     clients[player_id]["power"] += 1
-            
+
             # Remove collected food and notify all clients
             if food_to_remove:
                 for food in food_to_remove:
@@ -478,12 +517,12 @@ async def game_ws(websocket: WebSocket):
             for p1_id in current_player_ids:
                 if p1_id not in clients or p1_id in processed_collisions: # Check if player still exists
                     continue
-                
+
                 for p2_id in current_player_ids:
                     if p1_id == p2_id or p2_id not in clients or p2_id in processed_collisions: # Check if other player exists and not self
                         continue
 
-                    # --- Check if either player is currently respawning --- 
+                    # --- Check if either player is currently respawning ---
                     if clients[p1_id].get("is_respawning", False) or clients[p2_id].get("is_respawning", False):
                         continue # Skip collision check if one is respawning
 
@@ -518,22 +557,22 @@ async def game_ws(websocket: WebSocket):
                         if winner_id and loser_id:
                             winner = clients[winner_id]
                             loser = clients[loser_id]
-                            
+
                             # Add power (only add if loser is not already at 1, prevents negative power)
                             power_gain = loser["power"] if loser["power"] > 1 else 1
                             winner["power"] += power_gain
-                            
+
                             # Reset loser power *immediately* in state
                             loser["power"] = 1
                             loser["is_respawning"] = True # <<< SET RESPAWNING FLAG
-                            
+
                             # Send "eaten" message to loser
                             try:
                                 loser_ws = loser["ws"]
                                 asyncio.create_task(loser_ws.send_json({"type": "eaten"}))
                             except Exception as e:
                                 print(f"Error sending 'eaten' message to {loser_id}: {e}")
-                            
+
                             # Schedule the respawn task for the loser
                             asyncio.create_task(schedule_respawn(loser_id))
 
@@ -559,7 +598,7 @@ async def game_ws(websocket: WebSocket):
                 "time_remaining": time_remaining,
                 "food": food_instances
             }
-            
+
             # Safely broadcast state to all *currently connected* clients
             clients_to_remove = []
             for pid, client in current_clients_items:
@@ -569,7 +608,7 @@ async def game_ws(websocket: WebSocket):
                 except (WebSocketDisconnect, RuntimeError) as e: # Catch disconnects and runtime errors (like sending after close)
                     print(f"Client {pid} disconnected during broadcast or send error: {e}")
                     clients_to_remove.append(pid)
-            
+
             # Clean up clients that caused errors during broadcast
             for pid in clients_to_remove:
                 if pid in clients:
@@ -587,7 +626,7 @@ async def game_ws(websocket: WebSocket):
         clients.pop(player_id, None)
 
 
-# --- Helper Function to Broadcast Messages --- 
+# --- Helper Function to Broadcast Messages ---
 async def broadcast_message(message: dict):
     """Sends a JSON message to all currently connected clients."""
     # Create a copy of client websockets to iterate over, avoiding modification issues
@@ -641,12 +680,14 @@ async def api_login(credentials: UserCredentials = Body(...), response: Response
     """Handles user login via API, expects JSON credentials."""
     user = users_collection.find_one({"username": credentials.username})
     if not user:
+        loginReg_logger.info(credentials.username + " could not find username")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
         )
     salt = user.get("salt", "")
     if not verify_password(credentials.password, salt, user["hashed_password"]):
+        loginReg_logger.info(credentials.username + " could not verify password")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
@@ -677,6 +718,7 @@ async def api_login(credentials: UserCredentials = Body(...), response: Response
     )
     # Return success status. Frontend JS will handle redirect.
     # Need to explicitly return the response object for the cookie to be set.
+    loginReg_logger.info(credentials.username + " login successful")
     return JSONResponse(content={"message": "Login successful"}, status_code=status.HTTP_200_OK, headers=response.headers)
 
 
@@ -685,6 +727,7 @@ async def api_register(credentials: UserCredentials = Body(...)):
     """Handles user registration via API, expects JSON credentials."""
     # Validate username length.
     if len(credentials.username) > 15:
+        loginReg_logger.info(credentials.username + " tried to register with too long username")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Username cannot be longer than 15 characters."
@@ -700,6 +743,7 @@ async def api_register(credentials: UserCredentials = Body(...)):
     }
     for char in credentials.username:
         if char in DISALLOWED_CHARS:
+            loginReg_logger.info(credentials.username + " tried to register with disallowed character " + char)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Username contains invalid characters."
@@ -707,6 +751,7 @@ async def api_register(credentials: UserCredentials = Body(...)):
 
     # Validate password complexity.
     if not check_password_complexity(credentials.password):
+        loginReg_logger.info(credentials.username + " tried to register with bad password")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Password must be at least 8 characters long and include at least three of: uppercase, lowercase, number, special character."
@@ -714,6 +759,7 @@ async def api_register(credentials: UserCredentials = Body(...)):
 
     # Check if username already exists.
     if users_collection.find_one({"username": credentials.username}):
+        loginReg_logger.info(credentials.username + " tried to register with username already in use")
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, # Use 409 Conflict for existing resource
             detail="Username already registered"
@@ -728,7 +774,7 @@ async def api_register(credentials: UserCredentials = Body(...)):
         "salt": salt,
         "hashed_password": hashed_password
     })
-
+    loginReg_logger.info(credentials.username + " registration successful")
     # Return success status. Frontend JS will handle redirect to login.
     return JSONResponse(content={"message": "Registration successful"}, status_code=status.HTTP_201_CREATED)
 
@@ -983,3 +1029,7 @@ def speed_update(player):
 '''
 
 
+
+@app.get("/hello/{name}")
+async def say_hello(name: str):
+    return {"message": f"Hello {name}"}
