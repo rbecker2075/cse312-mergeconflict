@@ -177,8 +177,37 @@ function handleSocketMessage(event) {
 
       if (!otherPlayers[id]) {
         const otherScale = playerInitialSize + info.power * 0.005; // Scale based on power
+        
+        // Create the other player sprite with default texture initially
         const other = scene.add.sprite(info.x, info.y, 'playerSprite').setScale(otherScale);
         other.setDepth(1);
+        
+        // If the player has a username, fetch their custom skin
+        if (info.username && info.username !== 'Guest') {
+          fetch('/api/getImg', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ message: info.username })
+          })
+          .then(response => response.json())
+          .then(data => {
+            if (data && data.fileName) {
+              // Load the custom skin for this player
+              const textureKey = `player_${id}_skin`;
+              scene.textures.exists(textureKey) || scene.load.image(textureKey, `/pictures/${data.fileName}`);
+              scene.load.once('complete', () => {
+                // Update the sprite with the custom texture if it still exists
+                if (otherPlayers[id] && otherPlayers[id].sprite) {
+                  otherPlayers[id].sprite.setTexture(textureKey);
+                }
+              });
+              scene.load.start();
+            }
+          })
+          .catch(error => console.error(`Error loading skin for player ${id}:`, error));
+        }
 
         // Add power text
         const powerText = scene.add.text(0, 0, info.power, {
@@ -443,9 +472,35 @@ function handleSocketMessage(event) {
 }
 
 function preload() {
-  this.load.image('playerSprite', '/game/static/assets/PurplePlanet.png');
+  // Fetch and load the player's custom skin
   this.load.image('background', '/game/static/assets/Background.png');
   this.load.image('food', '/game/static/assets/sun.png');
+  
+  // Default fallback sprite (will be used until custom image is loaded)
+  this.load.image('playerSprite', '/game/static/assets/PurplePlanet.png');
+  
+  // Load the player's custom sprite if they have one
+  const scene = this;
+  fetch('/api/playerSprite')
+    .then(response => response.json())
+    .then(data => {
+      if (data && data.fileName) {
+        // Load the custom skin with a unique key
+        scene.load.image('customPlayerSprite', `/pictures/${data.fileName}`);
+        scene.load.once('complete', () => {
+          // Once loaded, update all references to use the custom sprite
+          if (player) {
+            player.setTexture('customPlayerSprite');
+          }
+        });
+        // Start the load
+        scene.load.start();
+      }
+    })
+    .catch(error => {
+      console.error('Error loading custom player sprite:', error);
+      // Will fallback to default sprite
+    });
 }
 
 function create() {
@@ -467,7 +522,8 @@ function create() {
 
     // --- Initialize Game Elements AFTER successful connection ---
     // Spawn player in the middle of the world
-    player = scene.physics.add.sprite(worldWidth / 2, worldHeight / 2, 'playerSprite');
+    const playerTexture = scene.textures.exists('customPlayerSprite') ? 'customPlayerSprite' : 'playerSprite';
+    player = scene.physics.add.sprite(worldWidth / 2, worldHeight / 2, playerTexture);
     player.setOrigin(0.5, 0.5);
     player.setScale(playerInitialSize);
     player.setCollideWorldBounds(true);
