@@ -823,6 +823,7 @@ class PlayerStatsResponse(BaseModel):
     deaths: int
     kills: int
     pellets: int
+    skinFileName: str
 
 
 @app.get("/api/playerStats", response_model=PlayerStatsResponse)
@@ -835,6 +836,24 @@ async def get_player_stats(username: Optional[str] = Depends(get_current_user)):
 
     if not stats:
         raise HTTPException(status_code=404, detail="Player stats not found")
+    
+    # Fetch the user's skin information
+    skin = skin_collection.find_one({"username": username})
+    
+    # Determine the skin filename
+    skin_file_name = "PurplePlanet.png"  # Default skin
+    
+    if skin:
+        selected_skin = skin.get("selected", "skin1")
+        
+        if selected_skin == "custom":
+            skin_file_name = skin.get("custom", skin_file_name)
+        elif selected_skin == "skin1":
+            skin_file_name = "PurplePlanet.png"
+        elif selected_skin == "skin2":
+            skin_file_name = "RedPlanet.png"
+        elif selected_skin == "skin3":
+            skin_file_name = "BluePlanet.png"
 
     # Return stats in the expected format
     return PlayerStatsResponse(
@@ -842,6 +861,7 @@ async def get_player_stats(username: Optional[str] = Depends(get_current_user)):
         deaths=stats["deaths"],
         kills=stats["kills"],
         pellets=stats["pellets"],
+        skinFileName=skin_file_name
     )
 
 @app.get("/api/playerSprite")
@@ -944,11 +964,13 @@ async def serve_home_page():
     # Check if file exists? Add error handling if needed.
     return FileResponse("public/Profile.html")
 
+
 @app.post("/upload")
 async def upload_file(file: UploadFile, username: Optional[str] = Depends(get_current_user)):
     try:
-        # Ensure the 'public/pictures' directory exists
-        os.makedirs("public/pictures", exist_ok=True)
+        # Ensure the 'public/pictures' directory exists on the host
+        upload_dir = os.path.join(os.getcwd(), "public", "pictures")
+        os.makedirs(upload_dir, exist_ok=True)
 
         # Read the file content
         file_data = await file.read()
@@ -956,8 +978,7 @@ async def upload_file(file: UploadFile, username: Optional[str] = Depends(get_cu
         print(f"File content preview: {file_data[:100]}")  # Debugging file content preview
 
         # Set the static file path in the 'public/pictures' directory
-        file_path = os.path.join("public/pictures", file.filename)
-
+        file_path = os.path.join(upload_dir, file.filename)
 
         # Write the file to disk
         with open(file_path, "wb") as f:
@@ -977,6 +998,7 @@ async def upload_file(file: UploadFile, username: Optional[str] = Depends(get_cu
         # Return an error response if an exception occurs
         print(f"Error: {str(e)}")  # Debugging errors
         return JSONResponse(content={"error": str(e)}, status_code=500)
+
 
 
 

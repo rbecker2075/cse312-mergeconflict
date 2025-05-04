@@ -196,7 +196,40 @@
                     document.getElementById('games-won').textContent = data.gamesWon || 0;
                     document.getElementById('deaths').textContent = data.deaths || 0;
                     document.getElementById('kills').textContent = data.kills || 0;
-                    document.getElementById('pellets-eaten').textContent = data.pelletsEaten || 0;
+                    document.getElementById('pellets-eaten').textContent = data.pellets || 0;
+                    
+                    // Update preview image with currently selected skin
+                    if (data.skinFileName) {
+                        previewImage.src = `pictures/${data.skinFileName}`;
+                    }
+                    
+                    // Need to make an additional request to check for custom skin existence
+                    fetch('/api/playerSprite')
+                        .then(response => response.json())
+                        .then(skinData => {
+                            // If the user has a custom skin file, make the custom button visible
+                            const fileName = skinData.fileName;
+                            if (fileName && 
+                                fileName !== "PurplePlanet.png" && 
+                                fileName !== "RedPlanet.png" && 
+                                fileName !== "BluePlanet.png") {
+                                customSkinButton.style.backgroundImage = `url(pictures/${fileName})`;
+                                customSkinButton.style.display = 'block';
+                            }
+                            
+                            // Now select the currently active skin
+                            if (data.skinFileName === "PurplePlanet.png") {
+                                document.getElementById('skin1').click();
+                            } else if (data.skinFileName === "RedPlanet.png") {
+                                document.getElementById('skin2').click();
+                            } else if (data.skinFileName === "BluePlanet.png") {
+                                document.getElementById('skin3').click();
+                            } else {
+                                // This is a custom uploaded skin that's currently selected
+                                customSkinButton.click();
+                            }
+                        })
+                        .catch(error => console.error('Error fetching skin data:', error));
                 })
                 .catch(error => console.error('Error fetching player stats:', error));
         };

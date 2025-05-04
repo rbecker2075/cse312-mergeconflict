@@ -10,6 +10,7 @@ services:
       MONGO_URL: mongodb://mongo:20069
     volumes:
       - ./:/app/host_mount  # Mount host's ./logs directory to /app/logs in container
+      - ./public/pictures:/app/public/pictures
     depends_on:
       - mongo
 
