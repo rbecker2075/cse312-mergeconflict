@@ -250,115 +250,121 @@ if not loginReg_logger.handlers:
 
 @app.middleware("http")
 async def log_requests_and_responses(request: Request, call_next):
-    username = ''
-    if "session_token" in request.cookies:
-        tok = request.cookies.get("session_token")
-        hash_tok = hash_token(tok)
-        dicty = sessions_collection.find_one({"token_hash": hash_tok})
-        if dicty is not None:
-            username = dicty["username"]
-    #start_time = time.time()
-    client_ip = request.headers.get("x-real-ip", request.client.host if request.client else "unknown")
-    log_entry = []
-    # 1. Log Request Line and Headers
-    req_headers = dict(request.headers)
-    filtered_req_headers = filter_headers(req_headers)
-    log_entry.append(f"REQUEST: {request.method} {request.url.path} HTTP/{request.scope.get('http_version', '1.1')}")
-    for key, value in filtered_req_headers.items():
-        log_entry.append(f"{key}: {value}")
-    log_entry.append("") # Blank line before body
-    # 2. Log Request Body (conditionally)
-    request_body = await request.body() # Read body ONCE
-    # Check if path requires body redaction (login/register)
-    should_redact_body = request.method == "POST" and request.url.path in SENSITIVE_PATHS
-
-    if should_redact_body:
-        log_entry.append("[Request body redacted for sensitive endpoint]")
-    elif not request_body:
-        log_entry.append("[No request body]")
-    else:
-        content_type = request.headers.get("content-type")
-        if is_text_content_type(content_type):
-            try:
-                # Decode and truncate
-                body_str = request_body.decode('utf-8', errors='replace')[:MAX_BODY_LOG_SIZE]
-                log_entry.append(body_str)
-                if len(request_body) > MAX_BODY_LOG_SIZE:
-                    log_entry.append("... [truncated]")
-            except Exception as e:
-                log_entry.append(f"[Error decoding request body as text: {e}]")
-        else:
-            log_entry.append("[Non-text request body]")
-    log_entry.append("-" * 20) # Separator
-    # --- Pass request (with potentially consumed body) to the endpoint ---
-    # Need to provide the body again if it was consumed. FastAPI/Starlette handles this
-    # reasonably well if you await request.body() before call_next.
-    # If issues arise, a more complex approach involving Request stream wrapping is needed.
-    # --- Call the endpoint and get response ---
-    #response = Response()
     try:
-        response = await call_next(request)
-        stat = str(response.status_code)
-        #process_time = time.time() - start_time
-        #response.headers["X-Process-Time"] = str(process_time) # Optional: Add process time header
+        username = ''
+        if "session_token" in request.cookies:
+            tok = request.cookies.get("session_token")
+            hash_tok = hash_token(tok)
+            dicty = sessions_collection.find_one({"token_hash": hash_tok})
+            if dicty is not None:
+                username = dicty["username"]
+        #start_time = time.time()
+        client_ip = request.headers.get("x-real-ip", request.client.host if request.client else "unknown")
+        log_entry = []
+        # 1. Log Request Line and Headers
+        req_headers = dict(request.headers)
+        filtered_req_headers = filter_headers(req_headers)
+        log_entry.append(f"REQUEST: {request.method} {request.url.path} HTTP/{request.scope.get('http_version', '1.1')}")
+        for key, value in filtered_req_headers.items():
+            log_entry.append(f"{key}: {value}")
+        log_entry.append("") # Blank line before body
+        # 2. Log Request Body (conditionally)
+        request_body = await request.body() # Read body ONCE
+        # Check if path requires body redaction (login/register)
+        should_redact_body = request.method == "POST" and request.url.path in SENSITIVE_PATHS
+
+        if should_redact_body:
+            log_entry.append("[Request body redacted for sensitive endpoint]")
+        elif not request_body:
+            log_entry.append("[No request body]")
+        else:
+            content_type = request.headers.get("content-type")
+            if is_text_content_type(content_type):
+                try:
+                    # Decode and truncate
+                    body_str = request_body.decode('utf-8', errors='replace')[:MAX_BODY_LOG_SIZE]
+                    log_entry.append(body_str)
+                    if len(request_body) > MAX_BODY_LOG_SIZE:
+                        log_entry.append("... [truncated]")
+                except Exception as e:
+                    log_entry.append(f"[Error decoding request body as text: {e}]")
+            else:
+                log_entry.append("[Non-text request body]")
+        log_entry.append("-" * 20) # Separator
+        # --- Pass request (with potentially consumed body) to the endpoint ---
+        # Need to provide the body again if it was consumed. FastAPI/Starlette handles this
+        # reasonably well if you await request.body() before call_next.
+        # If issues arise, a more complex approach involving Request stream wrapping is needed.
+        # --- Call the endpoint and get response ---
+        #response = Response()
+        try:
+            response = await call_next(request)
+            stat = str(response.status_code)
+            #process_time = time.time() - start_time
+            #response.headers["X-Process-Time"] = str(process_time) # Optional: Add process time header
+        except Exception as e:
+            err_s = str(e)
+            tbs = traceback.format_exc()
+            combo = err_s + "\n" + tbs
+            error_logger.error(combo)
+            #return e
+            # Log exceptions if the request handling itself fails
+            #full_logger.error(f"Exception during request processing: {e}", exc_info=True)
+            # Re-raise or return a generic error response
+            #raise e # Or
+            return Response("Internal Server Error", status_code=500)
+        # 3. Log Response Status and Headers
+        res_headers = dict(response.headers)
+        filtered_res_headers = filter_headers(res_headers, is_response_headers=True)
+        # Try to get HTTP version from scope, default to 1.1
+        http_version = request.scope.get('http_version', '1.1')
+        log_entry.append(f"RESPONSE: HTTP/{http_version} {response.status_code}")
+        for key, value in filtered_res_headers.items():
+            log_entry.append(f"{key}: {value}")
+        log_entry.append("") # Blank line before body
+        # 4. Log Response Body (conditionally and carefully)
+        resp_body_content = b""
+        if isinstance(response, StreamingResponse):
+            # Consume the stream chunk by chunk to log and rebuild
+            async for chunk in response.body_iterator:
+                resp_body_content += chunk
+                if len(resp_body_content) >= MAX_BODY_LOG_SIZE:
+                    break # Stop reading if limit reached
+            # Re-create the response so it can be returned
+            response = Response(content=resp_body_content, status_code=response.status_code,
+                                headers=dict(response.headers), media_type=response.media_type)
+        else:
+            # For regular Responses, body is already available
+            resp_body_content = getattr(response, 'body', b'') # Access body safely
+
+        if not resp_body_content:
+             log_entry.append("[No response body]")
+        else:
+            content_type = response.headers.get("content-type")
+            if is_text_content_type(content_type):
+                try:
+                     # Decode and truncate
+                     body_str = resp_body_content.decode('utf-8', errors='replace')[:MAX_BODY_LOG_SIZE]
+                     log_entry.append(body_str)
+                     if len(resp_body_content) > MAX_BODY_LOG_SIZE:
+                         log_entry.append("... [truncated]")
+                except Exception as e:
+                     log_entry.append(f"[Error decoding response body as text: {e}]")
+            else:
+                log_entry.append("[Non-text response body]")
+        # 5. Write the combined entry to the full log file
+        full_logger.info("\n".join(log_entry))
+        request_logger.info("Username: "+ username +" Response Status: "+ stat, extra={
+            "client_ip": client_ip,
+            "method": request.method,
+            "path": request.url.path,
+        })
+        return response
     except Exception as e:
         err_s = str(e)
         tbs = traceback.format_exc()
         combo = err_s + "\n" + tbs
         error_logger.error(combo)
-        #return e
-        # Log exceptions if the request handling itself fails
-        #full_logger.error(f"Exception during request processing: {e}", exc_info=True)
-        # Re-raise or return a generic error response
-        #raise e # Or
-        return Response("Internal Server Error", status_code=500)
-    # 3. Log Response Status and Headers
-    res_headers = dict(response.headers)
-    filtered_res_headers = filter_headers(res_headers, is_response_headers=True)
-    # Try to get HTTP version from scope, default to 1.1
-    http_version = request.scope.get('http_version', '1.1')
-    log_entry.append(f"RESPONSE: HTTP/{http_version} {response.status_code}")
-    for key, value in filtered_res_headers.items():
-        log_entry.append(f"{key}: {value}")
-    log_entry.append("") # Blank line before body
-    # 4. Log Response Body (conditionally and carefully)
-    resp_body_content = b""
-    if isinstance(response, StreamingResponse):
-        # Consume the stream chunk by chunk to log and rebuild
-        async for chunk in response.body_iterator:
-            resp_body_content += chunk
-            if len(resp_body_content) >= MAX_BODY_LOG_SIZE:
-                break # Stop reading if limit reached
-        # Re-create the response so it can be returned
-        response = Response(content=resp_body_content, status_code=response.status_code,
-                            headers=dict(response.headers), media_type=response.media_type)
-    else:
-        # For regular Responses, body is already available
-        resp_body_content = getattr(response, 'body', b'') # Access body safely
-
-    if not resp_body_content:
-         log_entry.append("[No response body]")
-    else:
-        content_type = response.headers.get("content-type")
-        if is_text_content_type(content_type):
-            try:
-                 # Decode and truncate
-                 body_str = resp_body_content.decode('utf-8', errors='replace')[:MAX_BODY_LOG_SIZE]
-                 log_entry.append(body_str)
-                 if len(resp_body_content) > MAX_BODY_LOG_SIZE:
-                     log_entry.append("... [truncated]")
-            except Exception as e:
-                 log_entry.append(f"[Error decoding response body as text: {e}]")
-        else:
-            log_entry.append("[Non-text response body]")
-    # 5. Write the combined entry to the full log file
-    full_logger.info("\n".join(log_entry))
-    request_logger.info("Username: "+ username +" Response Status: "+ stat, extra={
-        "client_ip": client_ip,
-        "method": request.method,
-        "path": request.url.path,
-    })
-    return response
 
 
 
@@ -446,348 +452,354 @@ async def broadcast_state():
 
 @app.websocket("/ws/game")
 async def game_ws(websocket: WebSocket):
-    global game_start_time, food_instances, active_usernames, time_remaining
-
-    # --- Check for existing connection for logged-in users ---
-    session_token = websocket.cookies.get("session_token")
-    username = None
-    if session_token:
-        username = await get_current_user(session_token)
-        if username in active_usernames:
-            # User is already connected, reject this new connection
-            await websocket.accept() # Accept briefly to send the message
-            await websocket.send_json({"type": "error", "message": "Already connected in another tab."})
-            await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="User already connected")
-            print(f"Rejected connection for user {username}: already connected.")
-            return # Stop further execution for this connection
-    # --- End check ---
-
-    # Start the game timer if this is the first connection
-    if game_start_time is None and len(clients) == 0:
-        game_start_time = time.time()
-        generate_food()  # Generate initial food
-        start_broadcast_loop()
-
-
-    await websocket.accept()
-    player_id = str(uuid4())
-
-    # Get the session token from cookies (already done above, reuse username)
-    # session_token = websocket.cookies.get("session_token")
-    # username = None
-    # if session_token:
-    #     username = await get_current_user(session_token)
-
-    # Add user to active set if logged in
-    if username:
-        active_usernames.add(username)
-
-    clients[player_id] = {
-        "ws": websocket,
-        "x": worldWidth / 2,  # Spawn in center
-        "y": worldHeight / 2,  # Spawn in center
-        "power": 1,
-        "username": username,
-        "is_respawning": False,
-        "isInvulnerable": True # Player starts invulnerable
-    }
-
-    # Start invulnerability timer for new player
-    invulnerability_duration = 10 # Match client-side setting
-    asyncio.create_task(end_invulnerability(player_id, invulnerability_duration))
-
-    # Send back the ID, game time remaining, and initial food positions
-    time_remaining = max(0, game_duration - (time.time() - game_start_time)) if game_start_time else game_duration
-    await websocket.send_json({
-        "type": "id",
-        "id": player_id,
-        "time_remaining": time_remaining,
-        "food": food_instances
-    })
-
     try:
-        while True:
-            # Check if game time is up
-            current_time = time.time()
-            time_remaining = max(0, game_duration - (current_time - game_start_time)) if game_start_time else game_duration
+        global game_start_time, food_instances, active_usernames, time_remaining
 
-            if time_remaining <= 0 and game_start_time is not None:
-                # Game over - determine winner
-                winner_username = "Guest"
-                if clients: # Check if any clients are left to determine a winner
-                    winner = max(clients.items(), key=lambda x: x[1]["power"])
-                    winner_username = winner[1].get("username") or "Guest"
+        # --- Check for existing connection for logged-in users ---
+        session_token = websocket.cookies.get("session_token")
+        username = None
+        if session_token:
+            username = await get_current_user(session_token)
+            if username in active_usernames:
+                # User is already connected, reject this new connection
+                await websocket.accept() # Accept briefly to send the message
+                await websocket.send_json({"type": "error", "message": "Already connected in another tab."})
+                await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="User already connected")
+                print(f"Rejected connection for user {username}: already connected.")
+                return # Stop further execution for this connection
+        # --- End check ---
 
-                winner_display_duration = 5 # How long to show winner name
-                reset_countdown_duration = 10 # How long the "New game starting" countdown lasts
-
-                # Send game over message to all clients
-                for client in clients.values():
-                    try:
-                        await client["ws"].send_json({
-                            "type": "game_over",
-                            "winner": winner_username
-                        })
-                    except:
-                        print(f"Error sending game_over message to a client.")
-                        pass # Ignore errors for disconnected clients
-
-                # --- Make all players invulnerable during reset countdown ---
-                for pid in clients:
-                    if pid in clients: # Check they didn't disconnect right now
-                        clients[pid]["isInvulnerable"] = True
-                        clients[pid]["is_respawning"] = False # Ensure this is false too
-                # --- End Invulnerability Set ---
-
-                # Wait briefly for winner display
-                await asyncio.sleep(winner_display_duration)
-
-                # --- Send pre-reset countdown trigger ---
-                await broadcast_message({
-                    "type": "pre_reset_timer",
-                    "duration": reset_countdown_duration
-                })
-                # --- End pre-reset trigger ---
-
-                # Wait for the countdown duration before actually resetting
-                await asyncio.sleep(reset_countdown_duration)
-                
-                # --- Update persistent scores for all remaining players --- 
-                update_tasks = []
-                games_played_updates = [] # Track users whose games_played needs update
-                for client_id, client_info in list(clients.items()): # Iterate over a copy
-                    if client_id in clients: # Check if still connected
-                        username = client_info.get("username")
-                        score = client_info.get("power", 0)
-                        if username:
-                            update_tasks.append(update_total_score(username, score))
-                            games_played_updates.append(username)
-                if update_tasks:
-                    await asyncio.gather(*update_tasks)
-                # --- Update games played count & check achievements --- 
-                if games_played_updates:
-                    users_collection.update_many(
-                        {"username": {"$in": games_played_updates}},
-                        {"$inc": {"games_played": 1}}
-                    )
-                    # Check achievements for all players who finished the game
-                    achievement_check_tasks = [check_and_grant_achievements(uname) for uname in games_played_updates]
-                    await asyncio.gather(*achievement_check_tasks)
-                # --- End Games Played Update ---
+        # Start the game timer if this is the first connection
+        if game_start_time is None and len(clients) == 0:
+            game_start_time = time.time()
+            generate_food()  # Generate initial food
+            start_broadcast_loop()
 
 
-                # Reset game state
-                game_start_time = time.time()  # Reset timer
-                generate_food()  # Generate new food
-                invulnerability_duration = 10 # Duration for post-reset invulnerability
-                for client_id in clients:
-                    clients[client_id]["power"] = 1  # Reset all powers to 1
-                    clients[client_id]["x"] = random.randint(0, worldWidth)  # Random respawn
-                    clients[client_id]["y"] = random.randint(0, worldHeight)
-                    clients[client_id]["is_respawning"] = False # Ensure respawn flag is clear
-                    clients[client_id]["isInvulnerable"] = True # Grant invulnerability
-                    # Start timer to end invulnerability
-                    asyncio.create_task(end_invulnerability(client_id, invulnerability_duration))
+        await websocket.accept()
+        player_id = str(uuid4())
 
-                # Send reset message to all clients
-                for client in clients.values():
-                    try:
-                        await client["ws"].send_json({
-                            "type": "game_reset",
-                            "time_remaining": game_duration,
-                            "food": food_instances
-                        })
-                    except:
-                        pass
+        # Get the session token from cookies (already done above, reuse username)
+        # session_token = websocket.cookies.get("session_token")
+        # username = None
+        # if session_token:
+        #     username = await get_current_user(session_token)
 
-            data = await websocket.receive_json()
-            clients[player_id]["x"] = data["x"]
-            clients[player_id]["y"] = data["y"]
+        # Add user to active set if logged in
+        if username:
+            active_usernames.add(username)
 
-            # Check for food collisions
-            player_x = clients[player_id]["x"]
-            player_y = clients[player_id]["y"]
-            food_to_remove = []
+        clients[player_id] = {
+            "ws": websocket,
+            "x": worldWidth / 2,  # Spawn in center
+            "y": worldHeight / 2,  # Spawn in center
+            "power": 1,
+            "username": username,
+            "is_respawning": False,
+            "isInvulnerable": True # Player starts invulnerable
+        }
 
-            for food in food_instances:
-                distance = ((player_x - food["x"]) ** 2 + (player_y - food["y"]) ** 2) ** 0.5
-                if distance < 50:  # Increased from 30 to 50 for food collection radius
-                    food_to_remove.append(food)
-                    clients[player_id]["power"] += 1
-                    # --- Check score achievements after power increase ---
-                    current_username = clients[player_id].get("username")
-                    current_power = clients[player_id]["power"]
-                    if current_username:
-                        asyncio.create_task(check_in_game_score_achievements(current_username, current_power))
-                    # --- End Achievement Check --
-            # Remove collected food and notify all clients
-            if food_to_remove:
-                for food in food_to_remove:
-                    food_instances.remove(food)
-                # Send food update to all clients
-                for client in clients.values():
-                    try:
-                        await client["ws"].send_json({
-                            "type": "food_update",
-                            "removed_food": [f["id"] for f in food_to_remove]
-                        })
-                    except:
-                        pass
+        # Start invulnerability timer for new player
+        invulnerability_duration = 10 # Match client-side setting
+        asyncio.create_task(end_invulnerability(player_id, invulnerability_duration))
 
-            # Check for player collisions and update power
-            # Store players to process collisions for to avoid modifying during iteration
-            current_player_ids = list(clients.keys())
-            processed_collisions = set() # Avoid double checks
+        # Send back the ID, game time remaining, and initial food positions
+        time_remaining = max(0, game_duration - (time.time() - game_start_time)) if game_start_time else game_duration
+        await websocket.send_json({
+            "type": "id",
+            "id": player_id,
+            "time_remaining": time_remaining,
+            "food": food_instances
+        })
 
-            for p1_id in current_player_ids:
-                if p1_id not in clients or p1_id in processed_collisions: # Check if player still exists
-                    continue
+        try:
+            while True:
+                # Check if game time is up
+                current_time = time.time()
+                time_remaining = max(0, game_duration - (current_time - game_start_time)) if game_start_time else game_duration
 
-                for p2_id in current_player_ids:
-                    if p1_id == p2_id or p2_id not in clients or p2_id in processed_collisions: # Check if other player exists and not self
+                if time_remaining <= 0 and game_start_time is not None:
+                    # Game over - determine winner
+                    winner_username = "Guest"
+                    if clients: # Check if any clients are left to determine a winner
+                        winner = max(clients.items(), key=lambda x: x[1]["power"])
+                        winner_username = winner[1].get("username") or "Guest"
+
+                    winner_display_duration = 5 # How long to show winner name
+                    reset_countdown_duration = 10 # How long the "New game starting" countdown lasts
+
+                    # Send game over message to all clients
+                    for client in clients.values():
+                        try:
+                            await client["ws"].send_json({
+                                "type": "game_over",
+                                "winner": winner_username
+                            })
+                        except:
+                            print(f"Error sending game_over message to a client.")
+                            pass # Ignore errors for disconnected clients
+
+                    # --- Make all players invulnerable during reset countdown ---
+                    for pid in clients:
+                        if pid in clients: # Check they didn't disconnect right now
+                            clients[pid]["isInvulnerable"] = True
+                            clients[pid]["is_respawning"] = False # Ensure this is false too
+                    # --- End Invulnerability Set ---
+
+                    # Wait briefly for winner display
+                    await asyncio.sleep(winner_display_duration)
+
+                    # --- Send pre-reset countdown trigger ---
+                    await broadcast_message({
+                        "type": "pre_reset_timer",
+                        "duration": reset_countdown_duration
+                    })
+                    # --- End pre-reset trigger ---
+
+                    # Wait for the countdown duration before actually resetting
+                    await asyncio.sleep(reset_countdown_duration)
+
+                    # --- Update persistent scores for all remaining players ---
+                    update_tasks = []
+                    games_played_updates = [] # Track users whose games_played needs update
+                    for client_id, client_info in list(clients.items()): # Iterate over a copy
+                        if client_id in clients: # Check if still connected
+                            username = client_info.get("username")
+                            score = client_info.get("power", 0)
+                            if username:
+                                update_tasks.append(update_total_score(username, score))
+                                games_played_updates.append(username)
+                    if update_tasks:
+                        await asyncio.gather(*update_tasks)
+                    # --- Update games played count & check achievements ---
+                    if games_played_updates:
+                        users_collection.update_many(
+                            {"username": {"$in": games_played_updates}},
+                            {"$inc": {"games_played": 1}}
+                        )
+                        # Check achievements for all players who finished the game
+                        achievement_check_tasks = [check_and_grant_achievements(uname) for uname in games_played_updates]
+                        await asyncio.gather(*achievement_check_tasks)
+                    # --- End Games Played Update ---
+
+
+                    # Reset game state
+                    game_start_time = time.time()  # Reset timer
+                    generate_food()  # Generate new food
+                    invulnerability_duration = 10 # Duration for post-reset invulnerability
+                    for client_id in clients:
+                        clients[client_id]["power"] = 1  # Reset all powers to 1
+                        clients[client_id]["x"] = random.randint(0, worldWidth)  # Random respawn
+                        clients[client_id]["y"] = random.randint(0, worldHeight)
+                        clients[client_id]["is_respawning"] = False # Ensure respawn flag is clear
+                        clients[client_id]["isInvulnerable"] = True # Grant invulnerability
+                        # Start timer to end invulnerability
+                        asyncio.create_task(end_invulnerability(client_id, invulnerability_duration))
+
+                    # Send reset message to all clients
+                    for client in clients.values():
+                        try:
+                            await client["ws"].send_json({
+                                "type": "game_reset",
+                                "time_remaining": game_duration,
+                                "food": food_instances
+                            })
+                        except:
+                            pass
+
+                data = await websocket.receive_json()
+                clients[player_id]["x"] = data["x"]
+                clients[player_id]["y"] = data["y"]
+
+                # Check for food collisions
+                player_x = clients[player_id]["x"]
+                player_y = clients[player_id]["y"]
+                food_to_remove = []
+
+                for food in food_instances:
+                    distance = ((player_x - food["x"]) ** 2 + (player_y - food["y"]) ** 2) ** 0.5
+                    if distance < 50:  # Increased from 30 to 50 for food collection radius
+                        food_to_remove.append(food)
+                        clients[player_id]["power"] += 1
+                        # --- Check score achievements after power increase ---
+                        current_username = clients[player_id].get("username")
+                        current_power = clients[player_id]["power"]
+                        if current_username:
+                            asyncio.create_task(check_in_game_score_achievements(current_username, current_power))
+                        # --- End Achievement Check --
+                # Remove collected food and notify all clients
+                if food_to_remove:
+                    for food in food_to_remove:
+                        food_instances.remove(food)
+                    # Send food update to all clients
+                    for client in clients.values():
+                        try:
+                            await client["ws"].send_json({
+                                "type": "food_update",
+                                "removed_food": [f["id"] for f in food_to_remove]
+                            })
+                        except:
+                            pass
+
+                # Check for player collisions and update power
+                # Store players to process collisions for to avoid modifying during iteration
+                current_player_ids = list(clients.keys())
+                processed_collisions = set() # Avoid double checks
+
+                for p1_id in current_player_ids:
+                    if p1_id not in clients or p1_id in processed_collisions: # Check if player still exists
                         continue
 
-                    # --- Check if either player is currently respawning ---
-                    if clients[p1_id].get("is_respawning", False) or clients[p2_id].get("is_respawning", False):
-                        continue # Skip collision check if one is respawning
+                    for p2_id in current_player_ids:
+                        if p1_id == p2_id or p2_id not in clients or p2_id in processed_collisions: # Check if other player exists and not self
+                            continue
 
-                    # --- Check if either player is invulnerable ---
-                    if clients[p1_id].get("isInvulnerable", False) or clients[p2_id].get("isInvulnerable", False):
-                        continue # Skip collision check if one is invulnerable
-                    # --- End Checks ---
+                        # --- Check if either player is currently respawning ---
+                        if clients[p1_id].get("is_respawning", False) or clients[p2_id].get("is_respawning", False):
+                            continue # Skip collision check if one is respawning
 
-                    p1 = clients[p1_id]
-                    p2 = clients[p2_id]
+                        # --- Check if either player is invulnerable ---
+                        if clients[p1_id].get("isInvulnerable", False) or clients[p2_id].get("isInvulnerable", False):
+                            continue # Skip collision check if one is invulnerable
+                        # --- End Checks ---
 
-                    distance = ((p1["x"] - p2["x"]) ** 2 + (p1["y"] - p2["y"]) ** 2) ** 0.5
+                        p1 = clients[p1_id]
+                        p2 = clients[p2_id]
 
-                    if distance < 75: # Collision detected
-                        processed_collisions.add(p1_id)
-                        processed_collisions.add(p2_id)
+                        distance = ((p1["x"] - p2["x"]) ** 2 + (p1["y"] - p2["y"]) ** 2) ** 0.5
 
-                        winner_id, loser_id = None, None
-                        p1_power = p1["power"]
-                        p2_power = p2["power"]
+                        if distance < 75: # Collision detected
+                            processed_collisions.add(p1_id)
+                            processed_collisions.add(p2_id)
 
-                        if p1_power > p2_power:
-                            winner_id, loser_id = p1_id, p2_id
-                        elif p2_power > p1_power:
-                            winner_id, loser_id = p2_id, p1_id
-                        else: # Tie
-                            chosen_winner = random.choice([p1_id, p2_id])
-                            if chosen_winner == p1_id:
+                            winner_id, loser_id = None, None
+                            p1_power = p1["power"]
+                            p2_power = p2["power"]
+
+                            if p1_power > p2_power:
                                 winner_id, loser_id = p1_id, p2_id
-                            else:
+                            elif p2_power > p1_power:
                                 winner_id, loser_id = p2_id, p1_id
+                            else: # Tie
+                                chosen_winner = random.choice([p1_id, p2_id])
+                                if chosen_winner == p1_id:
+                                    winner_id, loser_id = p1_id, p2_id
+                                else:
+                                    winner_id, loser_id = p2_id, p1_id
 
-                        # Process the win/loss if winner and loser are determined
-                        if winner_id and loser_id and winner_id in clients and loser_id in clients: # Double check clients exist
-                            winner = clients[winner_id]
-                            loser = clients[loser_id]
+                            # Process the win/loss if winner and loser are determined
+                            if winner_id and loser_id and winner_id in clients and loser_id in clients: # Double check clients exist
+                                winner = clients[winner_id]
+                                loser = clients[loser_id]
 
-                            # Add power (only add if loser is not already at 1, prevents negative power)
-                            power_gain = loser["power"] if loser["power"] > 1 else 1
-                            winner["power"] += power_gain
+                                # Add power (only add if loser is not already at 1, prevents negative power)
+                                power_gain = loser["power"] if loser["power"] > 1 else 1
+                                winner["power"] += power_gain
 
-                            # Reset loser power *immediately* in state
-                            loser["power"] = 1
-                            loser["is_respawning"] = True # <<< SET RESPAWNING FLAG
-
-
-                            # Send "eaten" message to loser
-                            try:
-                                loser_ws = loser["ws"]
-                                asyncio.create_task(loser_ws.send_json({"type": "eaten"}))
-                            except Exception as e:
-                                print(f"Error sending 'eaten' message to {loser_id}: {e}")
-
-                            
-                            # --- Check winner's score achievements after power increase ---
-                            winner_username = winner.get("username") # Already got this above
-                            new_winner_power = winner["power"]
-                            if winner_username:
-                                asyncio.create_task(check_in_game_score_achievements(winner_username, new_winner_power))
-                            # --- End Score Achievement Check ---
-
-                            # --- Update winner's eaten count & check achievements ---
-                            winner_username = winner.get("username")
-                            if winner_username:
-                                users_collection.update_one(
-                                    {"username": winner_username},
-                                    {"$inc": {"players_eaten_lifetime": 1}}
-                                )
-                                asyncio.create_task(check_and_grant_achievements(winner_username))
-                            # --- End Eaten Count Update ---
+                                # Reset loser power *immediately* in state
+                                loser["power"] = 1
+                                loser["is_respawning"] = True # <<< SET RESPAWNING FLAG
 
 
-                            # Schedule the respawn task for the loser
-                            asyncio.create_task(schedule_respawn(loser_id))
+                                # Send "eaten" message to loser
+                                try:
+                                    loser_ws = loser["ws"]
+                                    asyncio.create_task(loser_ws.send_json({"type": "eaten"}))
+                                except Exception as e:
+                                    print(f"Error sending 'eaten' message to {loser_id}: {e}")
 
-                        break # Move to next p1_id after processing a collision for p1
+
+                                # --- Check winner's score achievements after power increase ---
+                                winner_username = winner.get("username") # Already got this above
+                                new_winner_power = winner["power"]
+                                if winner_username:
+                                    asyncio.create_task(check_in_game_score_achievements(winner_username, new_winner_power))
+                                # --- End Score Achievement Check ---
+
+                                # --- Update winner's eaten count & check achievements ---
+                                winner_username = winner.get("username")
+                                if winner_username:
+                                    users_collection.update_one(
+                                        {"username": winner_username},
+                                        {"$inc": {"players_eaten_lifetime": 1}}
+                                    )
+                                    asyncio.create_task(check_and_grant_achievements(winner_username))
+                                # --- End Eaten Count Update ---
+
+
+                                # Schedule the respawn task for the loser
+                                asyncio.create_task(schedule_respawn(loser_id))
+
+                            break # Move to next p1_id after processing a collision for p1
 
 
 
 
 
+                '''
+                # Prepare data for all players
+                # Gather current state safely
+                current_clients_items = list(clients.items()) # Copy items to prevent modification issues
+                state = {
+                    "type": "players",
+                    "players": {
+                        pid: {
+                            "x": info["x"],
+                            "y": info["y"],
+                            "power": info["power"],
+                            "username": info["username"],
+                            "is_respawning": info.get("is_respawning", False),
+                            "isInvulnerable": info.get("isInvulnerable", False)
+                        }
+                        for pid, info in current_clients_items
+                        if "ws" in info # Ensure basic client structure exists
+                    },
+                    "time_remaining": time_remaining,
+                    "food": food_instances
+                }
+    
+                # Safely broadcast state to all *currently connected* clients
+                clients_to_remove = []
+                for pid, client in current_clients_items:
+                    try:
+                        if "ws" in client:
+                            await client["ws"].send_json(state)
+                    except (WebSocketDisconnect, RuntimeError) as e: # Catch disconnects and runtime errors (like sending after close)
+                        print(f"Client {pid} disconnected during broadcast or send error: {e}")
+                        clients_to_remove.append(pid)
+    
+                # Clean up clients that caused errors during broadcast
+                for pid in clients_to_remove:
+                    if pid in clients:
+                        disconnected_client = clients.pop(pid)
+                        disconnected_username = disconnected_client.get("username")
+                        disconnected_score = disconnected_client.get("power", 0)
+                        if disconnected_username:
+                            active_usernames.discard(disconnected_username)
+                            # --- Update score on disconnect --- 
+                            await update_total_score(disconnected_username, disconnected_score)
+                            # --- End score update --- 
+                        # No need to broadcast removal here, as they already disconnected
             '''
-            # Prepare data for all players
-            # Gather current state safely
-            current_clients_items = list(clients.items()) # Copy items to prevent modification issues
-            state = {
-                "type": "players",
-                "players": {
-                    pid: {
-                        "x": info["x"],
-                        "y": info["y"],
-                        "power": info["power"],
-                        "username": info["username"],
-                        "is_respawning": info.get("is_respawning", False),
-                        "isInvulnerable": info.get("isInvulnerable", False)
-                    }
-                    for pid, info in current_clients_items
-                    if "ws" in info # Ensure basic client structure exists
-                },
-                "time_remaining": time_remaining,
-                "food": food_instances
-            }
-
-            # Safely broadcast state to all *currently connected* clients
-            clients_to_remove = []
-            for pid, client in current_clients_items:
-                try:
-                    if "ws" in client:
-                        await client["ws"].send_json(state)
-                except (WebSocketDisconnect, RuntimeError) as e: # Catch disconnects and runtime errors (like sending after close)
-                    print(f"Client {pid} disconnected during broadcast or send error: {e}")
-                    clients_to_remove.append(pid)
-
-            # Clean up clients that caused errors during broadcast
-            for pid in clients_to_remove:
-                if pid in clients:
-                    disconnected_client = clients.pop(pid)
-                    disconnected_username = disconnected_client.get("username")
-                    disconnected_score = disconnected_client.get("power", 0)
-                    if disconnected_username:
-                        active_usernames.discard(disconnected_username)
-                        # --- Update score on disconnect --- 
-                        await update_total_score(disconnected_username, disconnected_score)
-                        # --- End score update --- 
-                    # No need to broadcast removal here, as they already disconnected
-        '''
 
 
-    except WebSocketDisconnect:
-        # Player disconnecting logic
-        disconnected_client = clients.pop(player_id, None)
-        if disconnected_client:
-            disconnected_username = disconnected_client.get("username")
-            disconnected_score = disconnected_client.get("power", 0)
-            if disconnected_username:
-                active_usernames.discard(disconnected_username)
-                # --- Update score on disconnect --- 
-                await update_total_score(disconnected_username, disconnected_score)
-                # --- End score update --- 
-            print(f"Player {player_id} disconnected.") # Removed broadcast remove message
+        except WebSocketDisconnect:
+            # Player disconnecting logic
+            disconnected_client = clients.pop(player_id, None)
+            if disconnected_client:
+                disconnected_username = disconnected_client.get("username")
+                disconnected_score = disconnected_client.get("power", 0)
+                if disconnected_username:
+                    active_usernames.discard(disconnected_username)
+                    # --- Update score on disconnect ---
+                    await update_total_score(disconnected_username, disconnected_score)
+                    # --- End score update ---
+                print(f"Player {player_id} disconnected.") # Removed broadcast remove message
+    except Exception as e:
+        err_s = str(e)
+        tbs = traceback.format_exc()
+        combo = err_s + "\n" + tbs
+        error_logger.error(combo)
 
 
 # --- Helper Function to Broadcast Messages ---
