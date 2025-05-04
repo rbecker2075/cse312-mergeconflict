@@ -16,5 +16,8 @@ db = client.app_database
 users_collection = db.users
 sessions_collection = db.sessions
 leaderboard_stats_collection = db.leaderboard_stats
+skin_collection = db.skin
+playerStats_collection = db.stats
+
 
 print("Database collections initialized.")

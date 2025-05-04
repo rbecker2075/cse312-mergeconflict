@@ -3,11 +3,12 @@ import traceback
 import uvicorn
 import asyncio
 import json
-from fastapi import FastAPI, Request, Depends, HTTPException, status, Response, Cookie, Body, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, Depends, HTTPException, status, Response, Cookie, Body, WebSocket, WebSocketDisconnect, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from database import users_collection, sessions_collection, leaderboard_stats_collection
+from database import users_collection, sessions_collection, leaderboard_stats_collection, skin_collection, \
+    playerStats_collection
 from typing import Optional
 import os
 import string
@@ -803,6 +804,181 @@ async def broadcast_message(message: dict):
             pass
 # --- End Broadcast Helper ---
 
+
+
+class PlayerStatsResponse(BaseModel):
+    gamesWon: int
+    deaths: int
+    kills: int
+    pellets: int
+
+
+@app.get("/api/playerStats", response_model=PlayerStatsResponse)
+async def get_player_stats(username: Optional[str] = Depends(get_current_user)):
+    if not username:
+        raise HTTPException(status_code=401, detail="Unauthorized: Username is required")
+
+    # Fetch stats from the database using the username
+    stats = playerStats_collection.find_one({"username": username})
+
+    if not stats:
+        raise HTTPException(status_code=404, detail="Player stats not found")
+
+    # Return stats in the expected format
+    return PlayerStatsResponse(
+        gamesWon=stats["gamesWon"],
+        deaths=stats["deaths"],
+        kills=stats["kills"],
+        pellets=stats["pellets"],
+    )
+
+@app.get("/api/playerSprite")
+async def get_player_stats(username: Optional[str] = Depends(get_current_user)):
+    if not username:
+        raise HTTPException(status_code=401, detail="Unauthorized: Username is required")
+
+    # Fetch stats from the database using the username
+    skin = skin_collection.find_one({"username": username})
+
+    if not skin:
+        return {"fileName": "PurplePlanet.png"}
+
+
+
+
+    skinNum = skin.get("selected")
+    selected_skin = "PurplePlanet.png"
+
+    if skinNum == "custom":
+        selected_skin = skin.get("custom")
+    elif skinNum == "skin1"  :
+        selected_skin = "PurplePlanet.png"
+    elif skinNum == "skin2":
+        selected_skin = "RedPlanet.png"
+    elif skinNum == "skin3":
+        selected_skin = "BluePlanet.png"
+
+
+    return {"fileName": selected_skin}
+#{ fileName: 'PurplePlanet.png' }
+
+class Message(BaseModel):
+    message: str
+
+
+@app.post("/api/getImg")
+async def get_player_IMG(data: Message):
+    # Access the message from the request body
+    username = data.message
+    if not username:
+        raise HTTPException(status_code=401, detail="Unauthorized: Username is required")
+
+    # Fetch stats from the database using the username
+    skin = skin_collection.find_one({"username": username})
+
+    if not skin:
+        return {"fileName": "PurplePlanet.png"}
+
+
+
+
+    skinNum = skin.get("selected")
+    selected_skin = "PurplePlanet.png"
+
+    if skinNum == "custom":
+        selected_skin = skin.get("custom")
+    elif skinNum == "skin1"  :
+        selected_skin = "PurplePlanet.png"
+    elif skinNum == "skin2":
+        selected_skin = "RedPlanet.png"
+    elif skinNum == "skin3":
+        selected_skin = "BluePlanet.png"
+
+
+
+    # Return a dictionary with the key 'filename' and the received string
+    return JSONResponse(content={"fileName": selected_skin})
+
+
+
+
+
+class SkinSelection(BaseModel):
+    selectedSkin: str
+
+@app.post("/api/profile")
+async def save_skin(skin: SkinSelection, username: Optional[str] = Depends(get_current_user)):
+    """
+    Save the selected skin for the current user.
+    """
+    if not username:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+
+    try:
+        # Update or insert the skin selection in the database
+        skin_collection.update_one(
+            {"username": username},  # Match by username
+            {"$set": {"selected": skin.selectedSkin}},  # Update the selected field
+            upsert=True  # Create a new document if none exists
+        )
+
+        return {"message": "Skin selection saved successfully", "selected": skin.selectedSkin}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save skin: {str(e)}")
+
+@app.get("/profile", response_class=FileResponse)
+async def serve_home_page():
+    # Serve the main index page
+    # Check if file exists? Add error handling if needed.
+    return FileResponse("public/Profile.html")
+
+@app.post("/upload")
+async def upload_file(file: UploadFile, username: Optional[str] = Depends(get_current_user)):
+    try:
+        # Ensure the 'public/pictures' directory exists
+        os.makedirs("public/pictures", exist_ok=True)
+
+        # Read the file content
+        file_data = await file.read()
+        print(f"File size: {len(file_data)} bytes")  # Debugging file size
+        print(f"File content preview: {file_data[:100]}")  # Debugging file content preview
+
+        # Set the static file path in the 'public/pictures' directory
+        file_path = os.path.join("public/pictures", file.filename)
+
+
+        # Write the file to disk
+        with open(file_path, "wb") as f:
+            f.write(file_data)
+
+        if username:
+            skin_collection.update_one(
+                {"username": username},
+                {"$set": {"custom": file.filename}},
+                upsert=True  # Insert a new document if no match is found
+            )
+        print(f"File successfully uploaded to {file_path}")
+
+        # Return the static file path as a response
+        return {"file_path": f"pictures/{file.filename}"}
+    except Exception as e:
+        # Return an error response if an exception occurs
+        print(f"Error: {str(e)}")  # Debugging errors
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 @app.get("/", response_class=FileResponse)
 async def serve_home_page():
     # Serve the main index page
@@ -943,6 +1119,18 @@ async def api_register(credentials: UserCredentials = Body(...)):
         "unlocked_achievements": []
         # --- End Achievement Stats ---
     })
+
+    # default stats
+    new_stats = {
+        "username": credentials.username,
+        "gamesWon": 0,
+        "deaths": 0,
+        "kills": 0,
+        "pellets": 0
+    }
+    playerStats_collection.insert_one(new_stats)
+
+
     loginReg_logger.info(credentials.username + " registration successful")
     # Return success status. Frontend JS will handle redirect to login.
     return JSONResponse(content={"message": "Registration successful"}, status_code=status.HTTP_201_CREATED)

@@ -304,6 +304,38 @@
                     gameButtonContainer.style.flexDirection = 'column'; // Stack items vertically
                     gameButtonContainer.style.alignItems = 'center'; // Center items horizontally
 
+
+
+                    // Show PROFILE button
+
+                    // Create a new container for the profile button
+                    const profileButtonContainer = document.createElement('div');
+                    profileButtonContainer.id = 'profile-button-container';
+                    profileButtonContainer.style.position = 'absolute';
+                    profileButtonContainer.style.top = '20px';
+                    profileButtonContainer.style.left = '20px';
+                    profileButtonContainer.style.zIndex = '1000'; // Ensure it's above other elements
+
+                    // Create the profile button
+                    const profileButton = document.createElement('button');
+                    profileButton.textContent = 'Profile';
+                    profileButton.id = 'profile-btn';
+                    profileButton.classList.add('btn', 'btn-border-reveal');
+
+                    // Add a click event listener for navigation
+                    profileButton.addEventListener('click', async (event) => {
+                        event.preventDefault();
+                        window.location.href = '/profile';
+                    });
+
+                    // Append the profile button to the new container
+                    profileButtonContainer.appendChild(profileButton);
+
+                    // Append the container to the body
+                    document.body.appendChild(profileButtonContainer);
+
+
+
                     // Create the Start Game button
                     const startGameButton = document.createElement('button');
                     startGameButton.textContent = 'Start Game';
