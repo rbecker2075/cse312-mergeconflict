@@ -381,10 +381,71 @@ async def log_requests_and_responses(request: Request, call_next):
 
 
 
+broadcast_task = None
+broadcast_stop_event = asyncio.Event()
+time_remaining = 0
+
+def start_broadcast_loop():
+    global broadcast_task, broadcast_stop_event
+    if broadcast_task is None or broadcast_task.done():
+        broadcast_stop_event.clear()
+        broadcast_task = asyncio.create_task(broadcast_loop())
+
+def stop_broadcast_loop():
+    broadcast_stop_event.set()
+
+async def broadcast_loop():
+    try:
+        while not broadcast_stop_event.is_set():
+            await broadcast_state()
+            await asyncio.sleep(1 / 30)  # 30 times per second
+    except asyncio.CancelledError:
+        pass  # Task was cancelled
+
+async def broadcast_state():
+    # --- Your original broadcast logic ---
+    global time_remaining, game_start_time, food_instances, active_usernames
+    current_clients_items = list(clients.items())  # Copy items to prevent modification issues
+    state = {
+        "type": "players",
+        "players": {
+            pid: {
+                "x": info["x"],
+                "y": info["y"],
+                "power": info["power"],
+                "username": info["username"],
+                "is_respawning": info.get("is_respawning", False),
+                "isInvulnerable": info.get("isInvulnerable", False)
+            }
+            for pid, info in current_clients_items
+            if "ws" in info
+        },
+        "time_remaining": time_remaining,
+        "food": food_instances
+    }
+
+    clients_to_remove = []
+    for pid, client in current_clients_items:
+        try:
+            if "ws" in client:
+                await client["ws"].send_json(state)
+        except (WebSocketDisconnect, RuntimeError) as e:
+            print(f"Client {pid} disconnected during broadcast or send error: {e}")
+            clients_to_remove.append(pid)
+
+    for pid in clients_to_remove:
+        if pid in clients:
+            disconnected_client = clients.pop(pid)
+            disconnected_username = disconnected_client.get("username")
+            disconnected_score = disconnected_client.get("power", 0)
+            if disconnected_username:
+                active_usernames.discard(disconnected_username)
+                await update_total_score(disconnected_username, disconnected_score)
+
 
 @app.websocket("/ws/game")
 async def game_ws(websocket: WebSocket):
-    global game_start_time, food_instances, active_usernames
+    global game_start_time, food_instances, active_usernames, time_remaining
 
     # --- Check for existing connection for logged-in users ---
     session_token = websocket.cookies.get("session_token")
@@ -404,6 +465,8 @@ async def game_ws(websocket: WebSocket):
     if game_start_time is None and len(clients) == 0:
         game_start_time = time.time()
         generate_food()  # Generate initial food
+        start_broadcast_loop()
+
 
     await websocket.accept()
     player_id = str(uuid4())
@@ -661,6 +724,11 @@ async def game_ws(websocket: WebSocket):
 
                         break # Move to next p1_id after processing a collision for p1
 
+
+
+
+
+            '''
             # Prepare data for all players
             # Gather current state safely
             current_clients_items = list(clients.items()) # Copy items to prevent modification issues
@@ -704,6 +772,8 @@ async def game_ws(websocket: WebSocket):
                         await update_total_score(disconnected_username, disconnected_score)
                         # --- End score update --- 
                     # No need to broadcast removal here, as they already disconnected
+        '''
+
 
     except WebSocketDisconnect:
         # Player disconnecting logic
@@ -1117,7 +1187,7 @@ def winner(player1, player2):#returns dict with winner and loser #might want to 
             return {"loser":player1, "winner":player2}
 
 
-'''''
+
 def add_buff_debuff(player : Player, buff : string):
     if buff in player.debuffs:
         player.debuffs[buff] = True
