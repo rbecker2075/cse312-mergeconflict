@@ -23,6 +23,11 @@ from zoneinfo import ZoneInfo
 from uuid import uuid4
 from random import choice
 from pathlib import Path
+from typing import Optional
+from PIL import Image, ImageDraw, ImageChops
+import uuid
+from io import BytesIO
+
 #from traceback import extract_stack, format_list
 app = FastAPI(title='Merge Conflict Game', description='Authentication and Game API', version='1.0')
 
@@ -965,48 +970,124 @@ async def serve_home_page():
     return FileResponse("public/Profile.html")
 
 
+
+def resize_and_replace_circular_png(filename, target_size):
+    """
+    Resizes a circular PNG image to the target size and replaces the original file.
+    
+    Args:
+        filename (str): Path to the input PNG file (will be overwritten).
+        target_size (int): Desired width and height of the output image in pixels.
+    """
+    # Open the original image
+    original = Image.open(filename).convert("RGBA")
+    
+    # Create a new transparent image with target size
+    resized = Image.new("RGBA", (target_size, target_size), (0, 0, 0, 0))
+    
+    # Resize the original to fit while maintaining aspect ratio
+    original.thumbnail((target_size, target_size), Image.LANCZOS)
+    
+    # Center the original on the new canvas
+    x = (target_size - original.width) // 2
+    y = (target_size - original.height) // 2
+    resized.paste(original, (x, y), original)
+    
+    # Create a circular mask
+    mask = Image.new("L", (target_size, target_size), 0)
+    draw = ImageDraw.Draw(mask)
+    draw.ellipse((0, 0, target_size, target_size), fill=255)
+    
+    # Apply the mask
+    resized.putalpha(mask)
+    
+    # Overwrite the original file
+    resized.save(filename, "PNG")
+
+
+
 @app.post("/upload")
 async def upload_file(file: UploadFile, username: Optional[str] = Depends(get_current_user)):
     try:
-        # Ensure the 'public/pictures' directory exists on the host
+        # Ensure the upload directories exist
         upload_dir = os.path.join(os.getcwd(), "public", "pictures")
         os.makedirs(upload_dir, exist_ok=True)
 
         # Read the file content
         file_data = await file.read()
-        print(f"File size: {len(file_data)} bytes")  # Debugging file size
-        print(f"File content preview: {file_data[:100]}")  # Debugging file content preview
+        
+        # Generate unique filenames
+        file_ext = os.path.splitext(file.filename)[1].lower()
+        unique_id = str(uuid.uuid4())
+        original_filename = f"{unique_id}_original{file_ext}"
+        avatar_filename = f"{unique_id}_avatar.png"  # Always save as PNG
+        
+        # Paths for original and processed files
+        original_path = os.path.join(upload_dir, original_filename)
+        avatar_path = os.path.join(upload_dir, avatar_filename)
 
-        # Set the static file path in the 'public/pictures' directory
-        file_path = os.path.join(upload_dir, file.filename)
-
-        # Write the file to disk
-        with open(file_path, "wb") as f:
+        # Save original file temporarily
+        with open(original_path, "wb") as f:
             f.write(file_data)
 
+        # Process into circular avatar
+        try:
+            with Image.open(original_path) as img:
+                # Calculate largest possible circle
+                width, height = img.size
+                shorter_side = min(width, height)
+                
+                # Crop to square from center
+                left = (width - shorter_side) / 2
+                top = (height - shorter_side) / 2
+                right = (width + shorter_side) / 2
+                bottom = (height + shorter_side) / 2
+                img = img.crop((left, top, right, bottom))
+                
+                # Convert to RGBA if needed
+                if img.mode != 'RGBA':
+                    img = img.convert('RGBA')
+                
+                # Create circular mask
+                mask = Image.new('L', (shorter_side, shorter_side), 0)
+                draw = ImageDraw.Draw(mask)
+                draw.ellipse((0, 0, shorter_side, shorter_side), fill=255)
+                
+                # Apply mask
+                result = Image.new('RGBA', (shorter_side, shorter_side))
+                result.paste(img, (0, 0), mask)
+                
+                # Save the circular avatar
+                result.save(avatar_path, format='PNG')
+                resize_and_replace_circular_png(avatar_path, 600)
+        except Exception as img_error:
+            # Clean up if image processing fails
+            os.remove(original_path)
+            raise RuntimeError(f"Image processing failed: {str(img_error)}")
+
+        # Delete the original file after processing
+        os.remove(original_path)
+
+        # Update database with avatar filename
         if username:
             skin_collection.update_one(
                 {"username": username},
-                {"$set": {"custom": file.filename}},
-                upsert=True  # Insert a new document if no match is found
+                {"$set": {"custom": avatar_filename}},
+                upsert=True
             )
-        print(f"File successfully uploaded to {file_path}")
 
-        # Return the static file path as a response
-        return {"file_path": f"pictures/{file.filename}"}
+        print(f"Avatar successfully processed and saved to {avatar_path}")
+        return {"file_path": f"pictures/{avatar_filename}"}
+
     except Exception as e:
-        # Return an error response if an exception occurs
-        print(f"Error: {str(e)}")  # Debugging errors
-        return JSONResponse(content={"error": str(e)}, status_code=500)
-
-
-
-
-
-
-
-
-
+        # Clean up any partial files if error occurs
+        if 'original_path' in locals() and os.path.exists(original_path):
+            os.remove(original_path)
+        if 'avatar_path' in locals() and os.path.exists(avatar_path):
+            os.remove(avatar_path)
+            
+        print(f"Error: {str(e)}")
+        return JSONResponse(content={"error": str(e)}, status_code=500) 
 
 
 
