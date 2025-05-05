@@ -8,7 +8,7 @@
 * request_logs.log -- Basic Functionality, Response Codes, Username after Login
 * reg_login.log -- Registration / Login records
 * error_logs.log -- Error stack trace logs
-* full_request_response.log -- Full Request and Responses (prepare to horizontally scroll)
+* full_request_response.log -- Full Request and Responses
 
 ### Branches: main -- for cloning and running locally  |  deadline_deployment -- branch running at https://merge-conflict.cse312.dev/
 
