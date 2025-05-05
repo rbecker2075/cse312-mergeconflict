@@ -1097,7 +1097,7 @@ async def api_login(credentials: UserCredentials = Body(...), response: Response
         max_age=30 * 24 * 60 * 60, # 30 days
         path="/",
         samesite="Lax",
-        secure=True, # Set to True if using HTTPS
+        secure=False, # Set to True if using HTTPS
         domain=None, # Adjust if needed
     )
     
