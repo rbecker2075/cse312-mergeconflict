@@ -10,7 +10,7 @@
 * error_logs.log -- Error stack trace logs
 * full_request_response.log -- Full Request and Responses (prepare to horizontally scroll)
 
-### Branches: main -- for cloning and running locally  |  deployment_checkpoint -- branch running at https://merge-conflict.cse312.dev/
+### Branches: main -- for cloning and running locally  |  deadline_deployment -- branch running at https://merge-conflict.cse312.dev/
 
 ### Big goal:
 
