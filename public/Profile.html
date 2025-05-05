@@ -150,6 +150,15 @@
             font-size: 18px;
             color: #ccc;
         }
+
+        .error-message {
+            color: #ff5555;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 8px;
+            border-radius: 5px;
+            margin-top: 10px;
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -173,7 +182,8 @@
         </div>
         <button class="btn-border-reveal" id="back">Back</button>
         <button class="btn-border-reveal" id="upload-button">Upload Skin</button>
-        <input type="file" id="file-upload" accept="image/*">
+        <input type="file" id="file-upload" accept=".jpg,.jpeg,.png">
+        <div class="error-message" id="upload-error">Only JPEG and PNG files are allowed</div>
     </div>
 
     <!-- Player Preview -->
@@ -264,6 +274,21 @@
         document.getElementById('file-upload').addEventListener('change', (event) => {
             const file = event.target.files[0];
             if (file) {
+                // Check if file is JPEG or PNG
+                const fileType = file.type;
+                const errorMessage = document.getElementById('upload-error');
+                
+                if (fileType !== 'image/jpeg' && fileType !== 'image/png') {
+                    // Show error message
+                    errorMessage.style.display = 'block';
+                    // Clear the file input
+                    event.target.value = '';
+                    return;
+                }
+                
+                // Hide error message if previously shown
+                errorMessage.style.display = 'none';
+                
                 const formData = new FormData();
                 formData.append('file', file);
 
