@@ -1,13 +1,13 @@
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.types import ASGIApp  # We will use this for call_next
 import logging
 import os
 import time
 import json
 from datetime import datetime
-from typing import Any, Optional, Callable
+from typing import Any, Optional
 
 from fastapi import Request, Response
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
-from starlette.types import ASGIApp, Message
 
 class RequestResponseLogger(BaseHTTPMiddleware):
     def __init__(self, app: ASGIApp):
@@ -32,7 +32,8 @@ class RequestResponseLogger(BaseHTTPMiddleware):
         
         return logger
 
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+    async def dispatch(self, request: Request, call_next: ASGIApp) -> Response:
+        # Exclude paths for docs, redoc, openapi, favicon (common static files)
         if request.url.path in ["/docs", "/openapi.json", "/redoc", "/favicon.ico"]:
             return await call_next(request)
 
@@ -40,26 +41,22 @@ class RequestResponseLogger(BaseHTTPMiddleware):
         request_body = await self._get_request_body(request)
         start_time = time.time()
 
-        # Get the response
-        response = await call_next(request)
-        
-        # Capture response body
-        response_body, response = await self._capture_response_body(response, start_time)
+        # Check if the request is for a static file
+        if request.url.path.startswith(("/game/static", "/pictures")):
+            # Log only basic info for static requests (image, assets, etc.)
+            response = await call_next(request)
+            self._log_static_request(request, response, start_time, request_body)
+            return response
 
-        # Log the data
-        log_data = {
-            "timestamp": datetime.utcnow().isoformat(),
-            "method": request.method,
-            "url": str(request.url),
-            "status_code": response.status_code,
-            "processing_time": time.time() - start_time,
-            "client_ip": request.client.host if request.client else None,
-            "request_body": request_body,
-            "response_body": response_body
-        }
-        
-        self.logger.info(json.dumps(log_data, default=str) + "\n")
-        self.logger.handlers[0].flush()
+        # For non-static (dynamic) requests, log full details
+        response = await call_next(request)
+
+        # Log response for binary and text responses
+        if self._is_binary_response(response):
+            self._log_binary_response(request, response, start_time, request_body)
+        else:
+            response_body, response = await self._capture_response_body(response, start_time)
+            self._log_dynamic_response(request, response, response_body, start_time, request_body)
 
         return response
 
@@ -111,3 +108,55 @@ class RequestResponseLogger(BaseHTTPMiddleware):
             return content.decode()
         except UnicodeDecodeError:
             return "<binary content>"
+
+    def _is_binary_response(self, response: Response) -> bool:
+        content_type = response.headers.get("Content-Type", "")
+        return "image" in content_type or "application/octet-stream" in content_type
+
+    def _log_static_request(self, request: Request, response: Response, start_time: float, request_body: Optional[Any]):
+        log_data = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "method": request.method,
+            "url": str(request.url),
+            "status_code": response.status_code,
+            "processing_time": time.time() - start_time,
+            "client_ip": request.client.host if request.client else None,
+            "request_body": request_body,
+            "response_metadata": {
+                "content_type": response.headers.get("Content-Type"),
+                "content_length": response.headers.get("Content-Length")
+            }
+        }
+        self.logger.info(json.dumps(log_data, default=str) + "\n")
+        self.logger.handlers[0].flush()
+
+    def _log_binary_response(self, request: Request, response: Response, start_time: float, request_body: Optional[Any]):
+        log_data = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "method": request.method,
+            "url": str(request.url),
+            "status_code": response.status_code,
+            "processing_time": time.time() - start_time,
+            "client_ip": request.client.host if request.client else None,
+            "request_body": request_body,
+            "response_metadata": {
+                "content_type": response.headers.get("Content-Type"),
+                "content_length": response.headers.get("Content-Length")
+            }
+        }
+        self.logger.info(json.dumps(log_data, default=str) + "\n")
+        self.logger.handlers[0].flush()
+
+    def _log_dynamic_response(self, request: Request, response: Response, response_body: Optional[str], start_time: float, request_body: Optional[Any]):
+        log_data = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "method": request.method,
+            "url": str(request.url),
+            "status_code": response.status_code,
+            "processing_time": time.time() - start_time,
+            "client_ip": request.client.host if request.client else None,
+            "request_body": request_body,
+            "response_body": response_body
+        }
+        self.logger.info(json.dumps(log_data, default=str) + "\n")
+        self.logger.handlers[0].flush()
