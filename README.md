@@ -4,7 +4,11 @@
 
 ### Database: MongoDB
 
-### Logs: Logs are witten to cse312-mergeconflict/request_logs.log
+### Logs: Logs are witten to cse312-mergeconflict/
+* request_logs.log -- Basic Functionality, Response Codes, Username after Login
+* reg_login.log -- Registration / Login records
+* error_logs.log -- Error stack trace logs
+* full_request_response.log -- Full Request and Responses (prepare to horizontally scroll)
 
 ### Branches: main -- for cloning and running locally  |  deployment_checkpoint -- branch running at https://merge-conflict.cse312.dev/
 

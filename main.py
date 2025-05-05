@@ -29,7 +29,7 @@ from PIL import Image, ImageDraw, ImageChops
 import uuid
 from io import BytesIO
 from starlette.responses import StreamingResponse
-
+import traceback
 
 #from traceback import extract_stack, format_list
 app = FastAPI(title='Merge Conflict Game', description='Authentication and Game API', version='1.0')
@@ -147,14 +147,8 @@ async def end_invulnerability(player_id: str, duration: int):
         clients[player_id]["isInvulnerable"] = False
 
 
-
-
-
-
-
 OFFSET_SECONDS = -4 * 3600
 
-# Log to the project root (outside /logs)
 def adjusted_localtime_converter(timestamp):
     """
     Applies an offset to the timestamp and then converts using time.localtime.
@@ -162,9 +156,6 @@ def adjusted_localtime_converter(timestamp):
     adjusted_timestamp = timestamp + OFFSET_SECONDS
     return time.localtime(adjusted_timestamp)
 
-# --- Your existing setup (with modifications for the formatter) ---
-
-# --- Basic Request Logger Setup (Existing) ---
 LOG_FILE = Path("/app/host_mount/request_logs.log") # Path in container
 LOG_FILE.parent.mkdir(exist_ok=True, parents=True)
 
@@ -181,25 +172,6 @@ if not request_logger.handlers:
     # formatter.converter = adjusted_localtime_converter
     file_handler.setFormatter(formatter)
     request_logger.addHandler(file_handler)
-
-# --- Full Request/Response Logger Setup (New) ---
-FULL_LOG_FILE = Path("/app/host_mount/full_request_response.log") # Path in container
-FULL_LOG_FILE.parent.mkdir(exist_ok=True, parents=True)
-
-full_logger = logging.getLogger("full_request_response_logger")
-full_logger.setLevel(logging.INFO)
-
-# Prevent adding multiple handlers
-if not full_logger.handlers:
-    full_file_handler = logging.FileHandler(FULL_LOG_FILE)
-    # Simple format, as details are in the message
-    full_formatter = logging.Formatter('%(asctime)s - %(message)s')
-    # Uncomment the next line if using the custom time converter
-    # full_formatter.converter = adjusted_localtime_converter
-    full_file_handler.setFormatter(full_formatter)
-    full_logger.addHandler(full_file_handler)
-
-# --- Helper Functions ---
 
 SENSITIVE_PATHS = ["/api/login", "/api/register"]
 MAX_BODY_LOG_SIZE = 2048
@@ -242,6 +214,7 @@ def filter_headers(headers: dict, is_response_headers: bool = False) -> dict:
         else:
             filtered[key] = value
     return filtered
+
 ERROR_FILE = Path("/app/host_mount/error_logs.log")
 REG_LOGIN_FILE = Path("/app/host_mount/reg_login.log")
 error_logger = logging.getLogger("error_logger")
@@ -357,11 +330,6 @@ async def log_requests_and_responses(request: Request, call_next):
             else:
                 log_entry.append("[Non-text response body]")
 
-        # DEBUG: Check if the log entry is being generated
-        full_logger.debug(f"Full log entry: \n{log_entry}")  # Debug the full log entry
-
-        # 5. Write the combined entry to the full log file
-        full_logger.info("\n".join(log_entry))
 
         # Log to the simple request logger
         request_logger.info("Username: " + username + " Response Status: " + str(response.status_code), extra={
@@ -379,17 +347,10 @@ async def log_requests_and_responses(request: Request, call_next):
         error_logger.error(combo)
 
 
-
-
-
-
-
-
-
-
 broadcast_task = None
 broadcast_stop_event = asyncio.Event()
 time_remaining = 0
+
 
 def start_broadcast_loop():
     global broadcast_task, broadcast_stop_event
@@ -447,6 +408,32 @@ async def broadcast_state():
             if disconnected_username:
                 active_usernames.discard(disconnected_username)
                 await update_total_score(disconnected_username, disconnected_score)
+
+async def broadcast_message(message: dict):
+    """Sends a JSON message to all currently connected clients."""
+    # Create a copy of client websockets to iterate over, avoiding modification issues
+    current_websockets = [info["ws"] for info in clients.values() if "ws" in info]
+    for ws in current_websockets:
+        try:
+            await ws.send_json(message)
+        except (WebSocketDisconnect, RuntimeError) as e:
+            # Handle potential errors silently during broadcast, main loop handles cleanup
+            print(f"Error during broadcast to a client: {e}")
+            pass
+
+class PlayerStatsResponse(BaseModel):
+    gamesWon: int
+    deaths: int
+    kills: int
+    pellets: int
+    skinFileName: str
+
+
+
+       # gamesWon=stats["gamesWon"],
+      #  deaths=stats["deaths"],
+     #   kills=stats["kills"],
+    #    pellets=stats["pellets"],
 
 
 @app.websocket("/ws/game")
@@ -765,40 +752,6 @@ async def game_ws(websocket: WebSocket):
         tbs = traceback.format_exc()
         combo = err_s + "\n" + tbs
         error_logger.error(combo)
-
-
-
-
-
-
-
-# --- Helper Function to Broadcast Messages ---
-async def broadcast_message(message: dict):
-    """Sends a JSON message to all currently connected clients."""
-    # Create a copy of client websockets to iterate over, avoiding modification issues
-    current_websockets = [info["ws"] for info in clients.values() if "ws" in info]
-    for ws in current_websockets:
-        try:
-            await ws.send_json(message)
-        except (WebSocketDisconnect, RuntimeError) as e:
-            # Handle potential errors silently during broadcast, main loop handles cleanup
-            print(f"Error during broadcast to a client: {e}")
-            pass
-# --- End Broadcast Helper ---
-
-class PlayerStatsResponse(BaseModel):
-    gamesWon: int
-    deaths: int
-    kills: int
-    pellets: int
-    skinFileName: str
-
-
-
-       # gamesWon=stats["gamesWon"],
-      #  deaths=stats["deaths"],
-     #   kills=stats["kills"],
-    #    pellets=stats["pellets"],
 
 @app.post("/api/addDeaths")
 async def add_Deaths(username: Optional[str] = Depends(get_current_user)):

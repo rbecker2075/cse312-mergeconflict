@@ -12,13 +12,11 @@ from fastapi import Request, Response
 
 # Helper function to filter sensitive data
 def filter_sensitive_data(headers: dict, body: Optional[Any] = None) -> dict:
-    # List of sensitive headers that need to be removed
     sensitive_headers = ['authorization', 'x-auth-token', 'set-cookie', 'cookie', 'session_token']
     filtered_headers = {key: value for key, value in headers.items() if key.lower() not in sensitive_headers}
-
-    # If the body is a dictionary (JSON format), handle it correctly
+    
     if isinstance(body, dict):
-        # Modify sensitive fields directly in the dictionary
+        # Modify sensitive fields in the body
         if 'password' in body:
             body['password'] = "***"
         if 'passwd' in body:
@@ -28,17 +26,16 @@ def filter_sensitive_data(headers: dict, body: Optional[Any] = None) -> dict:
     
     return filtered_headers, body
 
-
 class RequestResponseLogger(BaseHTTPMiddleware):
     def __init__(self, app: ASGIApp):
         super().__init__(app)
         self.logger = self._configure_logging()
 
     def _configure_logging(self):
-        log_dir = "/app/host_mount/logs"
+        log_dir = "/app/host_mount"
         os.makedirs(log_dir, exist_ok=True)
 
-        log_file = os.path.join(log_dir, "api_requests.log")
+        log_file = os.path.join(log_dir, "full_request_response.log")
         logger = logging.getLogger("api-logger")
         logger.setLevel(logging.INFO)
 
@@ -53,7 +50,7 @@ class RequestResponseLogger(BaseHTTPMiddleware):
         return logger
 
     async def dispatch(self, request: Request, call_next: ASGIApp) -> Response:
-    # Exclude paths for docs, redoc, openapi, favicon (common static files)
+        # Exclude paths for docs, redoc, openapi, favicon (common static files)
         if request.url.path in ["/docs", "/openapi.json", "/redoc", "/favicon.ico"]:
             return await call_next(request)
 
@@ -62,7 +59,7 @@ class RequestResponseLogger(BaseHTTPMiddleware):
         start_time = time.time()
 
         # Check if the request is for a static file
-        if request.url.path.startswith(("/game/static", "/pictures")):
+        if request.url.path.startswith(("/game/static", "/pictures")) and not request.url.path.startswith("/game/static/game"):
             # Log only basic info for static requests (image, assets, etc.)
             response = await call_next(request)
             self._log_static_request(request, response, start_time, request_body)
@@ -80,7 +77,6 @@ class RequestResponseLogger(BaseHTTPMiddleware):
 
         return response
 
-
     async def _get_request_body(self, request: Request) -> Optional[Any]:
         try:
             # Try parsing JSON (dict format)
@@ -91,7 +87,6 @@ class RequestResponseLogger(BaseHTTPMiddleware):
                 return (await request.body()).decode()
             except:
                 return None
-
 
     async def _capture_response_body(self, response: Response, start_time: float):
         content = b""
@@ -127,12 +122,14 @@ class RequestResponseLogger(BaseHTTPMiddleware):
 
     def _decode_content(self, content: bytes) -> Any:
         try:
-            return content.decode()[:2048]  # Limit to first 2048 bytes
+            # Decode content as UTF-8 text, ignoring errors
+            return content.decode('utf-8', errors='ignore')[:2048]  # Limit to first 2048 bytes
         except UnicodeDecodeError:
             return "<binary content>"
 
     def _is_binary_response(self, response: Response) -> bool:
         content_type = response.headers.get("Content-Type", "")
+        # Treat JavaScript and HTML as text
         return "image" in content_type or "application/octet-stream" in content_type
 
     def _log_static_request(self, request: Request, response: Response, start_time: float, request_body: Optional[Any]):
@@ -176,7 +173,6 @@ class RequestResponseLogger(BaseHTTPMiddleware):
         self.logger.handlers[0].flush()
 
     def _log_dynamic_response(self, request: Request, response: Response, response_body: Optional[str], start_time: float, request_body: Optional[Any]):
-        # Apply filter to the request and response body before logging
         filtered_request_headers, filtered_request_body = filter_sensitive_data(dict(request.headers), request_body)
         filtered_response_headers, filtered_response_body = filter_sensitive_data(dict(response.headers), response_body)
 
@@ -193,9 +189,5 @@ class RequestResponseLogger(BaseHTTPMiddleware):
             "response_headers": filtered_response_headers
         }
 
-        # Log the filtered request and response data
         self.logger.info(json.dumps(log_data, default=str) + "\n")
         self.logger.handlers[0].flush()
-
-
-
