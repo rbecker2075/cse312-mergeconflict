@@ -10,6 +10,7 @@ from fastapi.templating import Jinja2Templates
 from database import users_collection, sessions_collection, leaderboard_stats_collection, skin_collection, \
     playerStats_collection
 from typing import Optional
+from logger_help import RequestResponseLogger
 import os
 import string
 from auth import get_password_hash, verify_password, create_access_token, hash_token, get_current_user
@@ -27,10 +28,12 @@ from typing import Optional
 from PIL import Image, ImageDraw, ImageChops
 import uuid
 from io import BytesIO
+from starlette.responses import StreamingResponse
+import traceback
 
 #from traceback import extract_stack, format_list
 app = FastAPI(title='Merge Conflict Game', description='Authentication and Game API', version='1.0')
-
+app.add_middleware(RequestResponseLogger)
 
 # Mount 'public/pictures' directory to serve images under '/pictures' path
 app.mount("/pictures", StaticFiles(directory="public/pictures"), name="pictures")
@@ -58,11 +61,8 @@ def check_password_complexity(password: str) -> bool:
     met_criteria = sum(checks.values())
     return met_criteria >= 3
 
-
-# --- Routes for Serving Frontend Pages ---
-
 clients = {}
-active_usernames = set() # Track usernames of currently connected players
+active_usernames = set()
 
 # Add these at the top with other global variables
 game_start_time = None
@@ -146,9 +146,9 @@ async def end_invulnerability(player_id: str, duration: int):
     if player_id in clients:
         clients[player_id]["isInvulnerable"] = False
 
+
 OFFSET_SECONDS = -4 * 3600
 
-# Log to the project root (outside /logs)
 def adjusted_localtime_converter(timestamp):
     """
     Applies an offset to the timestamp and then converts using time.localtime.
@@ -156,9 +156,6 @@ def adjusted_localtime_converter(timestamp):
     adjusted_timestamp = timestamp + OFFSET_SECONDS
     return time.localtime(adjusted_timestamp)
 
-# --- Your existing setup (with modifications for the formatter) ---
-
-# --- Basic Request Logger Setup (Existing) ---
 LOG_FILE = Path("/app/host_mount/request_logs.log") # Path in container
 LOG_FILE.parent.mkdir(exist_ok=True, parents=True)
 
@@ -175,25 +172,6 @@ if not request_logger.handlers:
     # formatter.converter = adjusted_localtime_converter
     file_handler.setFormatter(formatter)
     request_logger.addHandler(file_handler)
-
-# --- Full Request/Response Logger Setup (New) ---
-FULL_LOG_FILE = Path("/app/host_mount/full_request_response.log") # Path in container
-FULL_LOG_FILE.parent.mkdir(exist_ok=True, parents=True)
-
-full_logger = logging.getLogger("full_request_response_logger")
-full_logger.setLevel(logging.INFO)
-
-# Prevent adding multiple handlers
-if not full_logger.handlers:
-    full_file_handler = logging.FileHandler(FULL_LOG_FILE)
-    # Simple format, as details are in the message
-    full_formatter = logging.Formatter('%(asctime)s - %(message)s')
-    # Uncomment the next line if using the custom time converter
-    # full_formatter.converter = adjusted_localtime_converter
-    full_file_handler.setFormatter(full_formatter)
-    full_logger.addHandler(full_file_handler)
-
-# --- Helper Functions ---
 
 SENSITIVE_PATHS = ["/api/login", "/api/register"]
 MAX_BODY_LOG_SIZE = 2048
@@ -236,6 +214,7 @@ def filter_headers(headers: dict, is_response_headers: bool = False) -> dict:
         else:
             filtered[key] = value
     return filtered
+
 ERROR_FILE = Path("/app/host_mount/error_logs.log")
 REG_LOGIN_FILE = Path("/app/host_mount/reg_login.log")
 error_logger = logging.getLogger("error_logger")
@@ -263,30 +242,27 @@ async def log_requests_and_responses(request: Request, call_next):
             dicty = sessions_collection.find_one({"token_hash": hash_tok})
             if dicty is not None:
                 username = dicty["username"]
-        #start_time = time.time()
         client_ip = request.headers.get("x-real-ip", request.client.host if request.client else "unknown")
         log_entry = []
+
         # 1. Log Request Line and Headers
         req_headers = dict(request.headers)
         filtered_req_headers = filter_headers(req_headers)
         log_entry.append(f"REQUEST: {request.method} {request.url.path} HTTP/{request.scope.get('http_version', '1.1')}")
         for key, value in filtered_req_headers.items():
             log_entry.append(f"{key}: {value}")
-        log_entry.append("") # Blank line before body
+        log_entry.append("")  # Blank line before body
+
         # 2. Log Request Body (conditionally)
-        request_body = await request.body() # Read body ONCE
-        # Check if path requires body redaction (login/register)
+        request_body = await request.body()  # Read body ONCE
         should_redact_body = request.method == "POST" and request.url.path in SENSITIVE_PATHS
 
         if should_redact_body:
             log_entry.append("[Request body redacted for sensitive endpoint]")
-        elif not request_body:
-            log_entry.append("[No request body]")
-        else:
+        elif request_body:
             content_type = request.headers.get("content-type")
             if is_text_content_type(content_type):
                 try:
-                    # Decode and truncate
                     body_str = request_body.decode('utf-8', errors='replace')[:MAX_BODY_LOG_SIZE]
                     log_entry.append(body_str)
                     if len(request_body) > MAX_BODY_LOG_SIZE:
@@ -295,76 +271,75 @@ async def log_requests_and_responses(request: Request, call_next):
                     log_entry.append(f"[Error decoding request body as text: {e}]")
             else:
                 log_entry.append("[Non-text request body]")
-        log_entry.append("-" * 20) # Separator
+        else:
+            log_entry.append("[Empty body]")
+        log_entry.append("-" * 20)  # Separator
+
         # --- Pass request (with potentially consumed body) to the endpoint ---
-        # Need to provide the body again if it was consumed. FastAPI/Starlette handles this
-        # reasonably well if you await request.body() before call_next.
-        # If issues arise, a more complex approach involving Request stream wrapping is needed.
-        # --- Call the endpoint and get response ---
-        #response = Response()
         try:
             response = await call_next(request)
-            stat = str(response.status_code)
-            #process_time = time.time() - start_time
-            #response.headers["X-Process-Time"] = str(process_time) # Optional: Add process time header
         except Exception as e:
             err_s = str(e)
             tbs = traceback.format_exc()
             combo = err_s + "\n" + tbs
             error_logger.error(combo)
-            #return e
-            # Log exceptions if the request handling itself fails
-            #full_logger.error(f"Exception during request processing: {e}", exc_info=True)
-            # Re-raise or return a generic error response
-            #raise e # Or
             return Response("Internal Server Error", status_code=500)
+
         # 3. Log Response Status and Headers
         res_headers = dict(response.headers)
         filtered_res_headers = filter_headers(res_headers, is_response_headers=True)
-        # Try to get HTTP version from scope, default to 1.1
         http_version = request.scope.get('http_version', '1.1')
         log_entry.append(f"RESPONSE: HTTP/{http_version} {response.status_code}")
         for key, value in filtered_res_headers.items():
             log_entry.append(f"{key}: {value}")
-        log_entry.append("") # Blank line before body
+        log_entry.append("")  # Blank line before body
+
         # 4. Log Response Body (conditionally and carefully)
         resp_body_content = b""
+
         if isinstance(response, StreamingResponse):
-            # Consume the stream chunk by chunk to log and rebuild
-            async for chunk in response.body_iterator:
-                resp_body_content += chunk
-                if len(resp_body_content) >= MAX_BODY_LOG_SIZE:
-                    break # Stop reading if limit reached
-            # Re-create the response so it can be returned
-            response = Response(content=resp_body_content, status_code=response.status_code,
-                                headers=dict(response.headers), media_type=response.media_type)
+            # For StreamingResponse, collect the body while rebuilding it for the client
+            async def generate_response():
+                nonlocal resp_body_content
+                async for chunk in response.body_iterator:
+                    resp_body_content += chunk
+                    if len(resp_body_content) >= MAX_BODY_LOG_SIZE:
+                        break  # Stop reading if limit reached
+                    yield chunk  # Yield back chunks to the client
+
+            # Recreate the StreamingResponse
+            response = StreamingResponse(generate_response(), status_code=response.status_code,
+                                         headers=dict(response.headers), media_type=response.media_type)
         else:
             # For regular Responses, body is already available
-            resp_body_content = getattr(response, 'body', b'') # Access body safely
+            resp_body_content = getattr(response, 'body', b'')  # Access body safely
 
+        # Check if we have any content in the response body
         if not resp_body_content:
-             log_entry.append("[No response body]")
+            log_entry.append("[No response body]")
         else:
             content_type = response.headers.get("content-type")
             if is_text_content_type(content_type):
                 try:
-                     # Decode and truncate
-                     body_str = resp_body_content.decode('utf-8', errors='replace')[:MAX_BODY_LOG_SIZE]
-                     log_entry.append(body_str)
-                     if len(resp_body_content) > MAX_BODY_LOG_SIZE:
-                         log_entry.append("... [truncated]")
+                    body_str = resp_body_content.decode('utf-8', errors='replace')[:MAX_BODY_LOG_SIZE]
+                    log_entry.append(body_str)
+                    if len(resp_body_content) > MAX_BODY_LOG_SIZE:
+                        log_entry.append("... [truncated]")
                 except Exception as e:
-                     log_entry.append(f"[Error decoding response body as text: {e}]")
+                    log_entry.append(f"[Error decoding response body as text: {e}]")
             else:
                 log_entry.append("[Non-text response body]")
-        # 5. Write the combined entry to the full log file
-        full_logger.info("\n".join(log_entry))
-        request_logger.info("Username: "+ username +" Response Status: "+ stat, extra={
+
+
+        # Log to the simple request logger
+        request_logger.info("Username: " + username + " Response Status: " + str(response.status_code), extra={
             "client_ip": client_ip,
             "method": request.method,
             "path": request.url.path,
         })
+
         return response
+
     except Exception as e:
         err_s = str(e)
         tbs = traceback.format_exc()
@@ -372,30 +347,10 @@ async def log_requests_and_responses(request: Request, call_next):
         error_logger.error(combo)
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 broadcast_task = None
 broadcast_stop_event = asyncio.Event()
 time_remaining = 0
+
 
 def start_broadcast_loop():
     global broadcast_task, broadcast_stop_event
@@ -454,6 +409,32 @@ async def broadcast_state():
                 active_usernames.discard(disconnected_username)
                 await update_total_score(disconnected_username, disconnected_score)
 
+async def broadcast_message(message: dict):
+    """Sends a JSON message to all currently connected clients."""
+    # Create a copy of client websockets to iterate over, avoiding modification issues
+    current_websockets = [info["ws"] for info in clients.values() if "ws" in info]
+    for ws in current_websockets:
+        try:
+            await ws.send_json(message)
+        except (WebSocketDisconnect, RuntimeError) as e:
+            # Handle potential errors silently during broadcast, main loop handles cleanup
+            print(f"Error during broadcast to a client: {e}")
+            pass
+
+class PlayerStatsResponse(BaseModel):
+    gamesWon: int
+    deaths: int
+    kills: int
+    pellets: int
+    skinFileName: str
+
+
+
+       # gamesWon=stats["gamesWon"],
+      #  deaths=stats["deaths"],
+     #   kills=stats["kills"],
+    #    pellets=stats["pellets"],
+
 
 @app.websocket("/ws/game")
 async def game_ws(websocket: WebSocket):
@@ -479,21 +460,10 @@ async def game_ws(websocket: WebSocket):
             game_start_time = time.time()
             generate_food()  # Generate initial food
             start_broadcast_loop()
-
-
         await websocket.accept()
         player_id = str(uuid4())
-
-        # Get the session token from cookies (already done above, reuse username)
-        # session_token = websocket.cookies.get("session_token")
-        # username = None
-        # if session_token:
-        #     username = await get_current_user(session_token)
-
-        # Add user to active set if logged in
         if username:
             active_usernames.add(username)
-
         clients[player_id] = {
             "ws": websocket,
             "x": worldWidth / 2,  # Spawn in center
@@ -540,15 +510,8 @@ async def game_ws(websocket: WebSocket):
                                 upsert=True  # Create a new document if none exists
                             )
 
-
-
                     winner_display_duration = 5 # How long to show winner name
                     reset_countdown_duration = 10 # How long the "New game starting" countdown lasts
-
-
-
-
-
 
                     # Send game over message to all clients
                     for client in clients.values():
@@ -603,8 +566,6 @@ async def game_ws(websocket: WebSocket):
                         achievement_check_tasks = [check_and_grant_achievements(uname) for uname in games_played_updates]
                         await asyncio.gather(*achievement_check_tasks)
                     # --- End Games Played Update ---
-
-
                     # Reset game state
                     game_start_time = time.time()  # Reset timer
                     generate_food()  # Generate new food
@@ -659,10 +620,6 @@ async def game_ws(websocket: WebSocket):
                         {"$set": {"pellets": stats["pellets"] + 1}},  # Update the selected field
                         upsert=True  # Create a new document if none exists
                     )
-
-
-
-
 
                     for food in food_to_remove:
                         food_instances.remove(food)
@@ -735,14 +692,12 @@ async def game_ws(websocket: WebSocket):
                                 loser["power"] = 1
                                 loser["is_respawning"] = True # <<< SET RESPAWNING FLAG
 
-
                                 # Send "eaten" message to loser
                                 try:
                                     loser_ws = loser["ws"]
                                     asyncio.create_task(loser_ws.send_json({"type": "eaten"}))
                                 except Exception as e:
                                     print(f"Error sending 'eaten' message to {loser_id}: {e}")
-
 
                                 # --- Check winner's score achievements after power increase ---
                                 winner_username = winner.get("username") # Already got this above
@@ -754,8 +709,6 @@ async def game_ws(websocket: WebSocket):
                                     {"$set": {"kills": stats["kills"] + 1}},  # Update the selected field
                                     upsert=True  # Create a new document if none exists
                                 )
-
-
 
                                 new_winner_power = winner["power"]
                                 if winner_username:
@@ -772,62 +725,10 @@ async def game_ws(websocket: WebSocket):
                                     asyncio.create_task(check_and_grant_achievements(winner_username))
                                 # --- End Eaten Count Update ---
 
-
                                 # Schedule the respawn task for the loser
                                 asyncio.create_task(schedule_respawn(loser_id))
 
                             break # Move to next p1_id after processing a collision for p1
-
-
-
-
-
-                '''
-                # Prepare data for all players
-                # Gather current state safely
-                current_clients_items = list(clients.items()) # Copy items to prevent modification issues
-                state = {
-                    "type": "players",
-                    "players": {
-                        pid: {
-                            "x": info["x"],
-                            "y": info["y"],
-                            "power": info["power"],
-                            "username": info["username"],
-                            "is_respawning": info.get("is_respawning", False),
-                            "isInvulnerable": info.get("isInvulnerable", False)
-                        }
-                        for pid, info in current_clients_items
-                        if "ws" in info # Ensure basic client structure exists
-                    },
-                    "time_remaining": time_remaining,
-                    "food": food_instances
-                }
-    
-                # Safely broadcast state to all *currently connected* clients
-                clients_to_remove = []
-                for pid, client in current_clients_items:
-                    try:
-                        if "ws" in client:
-                            await client["ws"].send_json(state)
-                    except (WebSocketDisconnect, RuntimeError) as e: # Catch disconnects and runtime errors (like sending after close)
-                        print(f"Client {pid} disconnected during broadcast or send error: {e}")
-                        clients_to_remove.append(pid)
-    
-                # Clean up clients that caused errors during broadcast
-                for pid in clients_to_remove:
-                    if pid in clients:
-                        disconnected_client = clients.pop(pid)
-                        disconnected_username = disconnected_client.get("username")
-                        disconnected_score = disconnected_client.get("power", 0)
-                        if disconnected_username:
-                            active_usernames.discard(disconnected_username)
-                            # --- Update score on disconnect --- 
-                            await update_total_score(disconnected_username, disconnected_score)
-                            # --- End score update --- 
-                        # No need to broadcast removal here, as they already disconnected
-            '''
-
 
         except WebSocketDisconnect:
             # Player disconnecting logic
@@ -841,7 +742,6 @@ async def game_ws(websocket: WebSocket):
                     await update_total_score(disconnected_username, disconnected_score)
                     # --- End score update ---
                 print(f"Player {player_id} disconnected.") # Removed broadcast remove message
-                
                 # Broadcast remove message to all remaining clients
                 await broadcast_message({
                     "type": "remove",
@@ -852,40 +752,6 @@ async def game_ws(websocket: WebSocket):
         tbs = traceback.format_exc()
         combo = err_s + "\n" + tbs
         error_logger.error(combo)
-
-
-# --- Helper Function to Broadcast Messages ---
-async def broadcast_message(message: dict):
-    """Sends a JSON message to all currently connected clients."""
-    # Create a copy of client websockets to iterate over, avoiding modification issues
-    current_websockets = [info["ws"] for info in clients.values() if "ws" in info]
-    for ws in current_websockets:
-        try:
-            await ws.send_json(message)
-        except (WebSocketDisconnect, RuntimeError) as e:
-            # Handle potential errors silently during broadcast, main loop handles cleanup
-            print(f"Error during broadcast to a client: {e}")
-            pass
-# --- End Broadcast Helper ---
-
-
-
-class PlayerStatsResponse(BaseModel):
-    gamesWon: int
-    deaths: int
-    kills: int
-    pellets: int
-    skinFileName: str
-
-
-
-       # gamesWon=stats["gamesWon"],
-      #  deaths=stats["deaths"],
-     #   kills=stats["kills"],
-    #    pellets=stats["pellets"],
-
-
-
 
 @app.post("/api/addDeaths")
 async def add_Deaths(username: Optional[str] = Depends(get_current_user)):
@@ -919,8 +785,6 @@ async def add_Kills(username: Optional[str] = Depends(get_current_user)):
     )
 
     return
-
-
 
 @app.get("/api/playerStats", response_model=PlayerStatsResponse)
 async def get_player_stats(username: Optional[str] = Depends(get_current_user)):
@@ -971,9 +835,6 @@ async def get_player_stats(username: Optional[str] = Depends(get_current_user)):
     if not skin:
         return {"fileName": "PurplePlanet.png"}
 
-
-
-
     skinNum = skin.get("selected")
     selected_skin = "PurplePlanet.png"
 
@@ -986,13 +847,10 @@ async def get_player_stats(username: Optional[str] = Depends(get_current_user)):
     elif skinNum == "skin3":
         selected_skin = "BluePlanet.png"
 
-
     return {"fileName": selected_skin}
-#{ fileName: 'PurplePlanet.png' }
 
 class Message(BaseModel):
     message: str
-
 
 @app.post("/api/getImg")
 async def get_player_IMG(data: Message):
@@ -1007,9 +865,6 @@ async def get_player_IMG(data: Message):
     if not skin:
         return {"fileName": "PurplePlanet.png"}
 
-
-
-
     skinNum = skin.get("selected")
     selected_skin = "PurplePlanet.png"
 
@@ -1022,14 +877,8 @@ async def get_player_IMG(data: Message):
     elif skinNum == "skin3":
         selected_skin = "BluePlanet.png"
 
-
-
     # Return a dictionary with the key 'filename' and the received string
     return JSONResponse(content={"fileName": selected_skin})
-
-
-
-
 
 class SkinSelection(BaseModel):
     selectedSkin: str
@@ -1059,8 +908,6 @@ async def serve_home_page():
     # Serve the main index page
     # Check if file exists? Add error handling if needed.
     return FileResponse("public/Profile.html")
-
-
 
 def resize_and_replace_circular_png(filename, target_size):
     """
@@ -1094,8 +941,6 @@ def resize_and_replace_circular_png(filename, target_size):
     
     # Overwrite the original file
     resized.save(filename, "PNG")
-
-
 
 @app.post("/upload")
 async def upload_file(file: UploadFile, username: Optional[str] = Depends(get_current_user)):
@@ -1180,11 +1025,6 @@ async def upload_file(file: UploadFile, username: Optional[str] = Depends(get_cu
         print(f"Error: {str(e)}")
         return JSONResponse(content={"error": str(e)}, status_code=500) 
 
-
-
-
-
-
 @app.get("/", response_class=FileResponse)
 async def serve_home_page():
     # Serve the main index page
@@ -1208,8 +1048,6 @@ async def serve_register_page(username: Optional[str] = Depends(get_current_user
     if username:
         return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
     return FileResponse("public/register.html")
-
-
 # --- Authentication API Endpoints ---
 
 @app.get("/auth/status")
@@ -1219,6 +1057,7 @@ async def auth_status(username: Optional[str] = Depends(get_current_user)):
         return {"logged_in": True, "username": username}
     else:
         return {"logged_in": False}
+
 
 @app.post("/api/login")
 async def api_login(credentials: UserCredentials = Body(...), response: Response = Response()):
@@ -1261,16 +1100,14 @@ async def api_login(credentials: UserCredentials = Body(...), response: Response
         secure=False, # Set to True if using HTTPS
         domain=None, # Adjust if needed
     )
-    # Return success status. Frontend JS will handle redirect.
-    # Need to explicitly return the response object for the cookie to be set.
+    
     loginReg_logger.info(credentials.username + " login successful")
     return JSONResponse(content={"message": "Login successful"}, status_code=status.HTTP_200_OK, headers=response.headers)
-
 
 @app.post("/api/register")
 async def api_register(credentials: UserCredentials = Body(...)):
     """Handles user registration via API, expects JSON credentials."""
-    # Validate username length.
+    
     if len(credentials.username) > 15:
         loginReg_logger.info(credentials.username + " tried to register with too long username")
         raise HTTPException(
@@ -1310,10 +1147,8 @@ async def api_register(credentials: UserCredentials = Body(...)):
             detail="Username already registered"
         )
 
-    # Hash the password.
     salt, hashed_password = get_password_hash(credentials.password)
 
-    # Store the new user.
     users_collection.insert_one({
         "username": credentials.username,
         "salt": salt,
@@ -1326,7 +1161,6 @@ async def api_register(credentials: UserCredentials = Body(...)):
         # --- End Achievement Stats ---
     })
 
-    # default stats
     new_stats = {
         "username": credentials.username,
         "gamesWon": 0,
@@ -1336,9 +1170,7 @@ async def api_register(credentials: UserCredentials = Body(...)):
     }
     playerStats_collection.insert_one(new_stats)
 
-
     loginReg_logger.info(credentials.username + " registration successful")
-    # Return success status. Frontend JS will handle redirect to login.
     return JSONResponse(content={"message": "Registration successful"}, status_code=status.HTTP_201_CREATED)
 
 
@@ -1358,9 +1190,7 @@ async def logout(response: Response = Response(), session_token: Optional[str] =
 
     return redirect_response # Return the redirect response
 
-
 # --- Game Specific API Endpoints ---
-
 @app.get("/api/game/status")
 async def get_game_status(username: Optional[str] = Depends(get_current_user)):
     """Checks if the currently logged-in user is already in an active game."""
@@ -1395,21 +1225,17 @@ async def get_user_achievements(username: str = Depends(get_current_user)):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated"
         )
-
     print(f"[Achievements API] Attempting to find user: {username}") # Add logging
     user_data = users_collection.find_one({"username": username}, {"_id": 0, "unlocked_achievements": 1})
     print(f"[Achievements API] Result of find_one for {username}: {user_data}") # Add logging
-
     if user_data is None:
         # This shouldn't happen if the user is authenticated, but handle defensively
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User data not found."
         )
-
     unlocked_ids = set(user_data.get("unlocked_achievements", []))
     all_achievements_status = []
-
     for ach_id, details in ACHIEVEMENTS.items():
         all_achievements_status.append({
             "id": ach_id,
@@ -1417,239 +1243,8 @@ async def get_user_achievements(username: str = Depends(get_current_user)):
             "description": details["description"],
             "unlocked": ach_id in unlocked_ids
         })
-
     return JSONResponse(content=all_achievements_status)
 # --- End Achievements API Endpoint ---
-
-# --- Logging Middleware and Functions (Keep as is) ---
-
-def request_log(request : Request, response : Response ):
-   tim = datetime.datetime.now()
-   content ="time: "+ tim.strftime("%m/%d/%Y, %H:%M:%S") + "\n client " + str(request.client.host)+"\n method " + str(request.method) + "\n url path " + str(request.url.path) + '\n response code ' + str(response.status_code) +"\n\n"
-   with open("/request_logs/request_logs.txt", "a") as f:
-        f.write(content)
-
-def fullLogging(request : Request, response : Response ):
-    req = b""
-    reqS = request.method + request.url.path
-    for header in request.headers:
-        reqS = reqS + header +": "+ request.headers[header]# need to take out auth tokens and handle cookies better
-    req = reqS.encode() + b"\n"
-    res = b""
-    with open("/fullreq.txt","ab") as f:
-        f.write(req)
-    with open("/fullres.txt","ab") as f:
-        f.write(res)
-
-#to do docker logs, volume
-def errorLog(error : string, tb : string):
-    content = "error: " + error + "\n" + "traceback: "+ tb +"\n\n"
-    with open("/error_log.txt","b") as f:
-        f.write(content)
-'''
-# full request and response logs
-@app.middleware("http")
-async def reqresLogging(request: Request, call_next):
-    #try:
-    response = await call_next(request)
-    #except Exception as e:
-    # erro = str(e)
-    #tb = traceback.format_exe()
-    #errorLog(e,tb)
-    #return
-    request_log(request,response)
-    #fullLogging(request,response)
-    return response # Return the actual response now
-'''
-# --- Remove duplicate /login route and /hello/{name} ---
-
-# --- Add main execution block (optional, for running directly) ---
-#if __name__ == "__main__":
-#    uvicorn.run(app, host="0.0.0.0", port=8000)
-leaderboard = []#list of dicts containing size and user
-player_dict = {}#will be added to when new user joins, username:player
-class Player:
-    def __init__(self, username):
-        self.username = username #these are stand in numbers if you want to change them
-        self.position_x : int
-        self.position_y : int
-        self.size = 20 #starting size
-        #self.speed = 5
-        #self.debuffs = {"debuff_speed":False,"debuff_size":False }#assuming maybe 2 debuffs and 2 buffs, increase and decrease size and speed temp
-        #self.buffs = {"buff_speed":False,"buff_size":False }
-
-food_dict ={}
-class Food:
-    def __init__(self, foodId, x,y):
-        self.position_x = x
-        self.position_y = y
-        self.idd = foodId
-
-def recievedMove(jsonMessage: string):#updates the player dict to players new position #does not return json position
-    message = json.loads(jsonMessage)
-    username = message["username"]
-    player = player_dict.get(username)
-    player.position_x = message["x"]
-    player.position_y = message["y"]
-    player_dict[username] = player
-
-#call after new player
-def add_player(jsonMessage: string):
-    message = json.loads(jsonMessage)
-    username = message["username"]
-    player = Player(username)
-    player_dict[username] = player #adds player to player dict
-
-def add_food(jsonMessage: string): #call after new food
-    message = json.loads(jsonMessage)
-    foodId = message["foodId"]
-    x = message["x"]
-    y = message["y"]
-    food = Food(foodId, x,y)
-    food_dict[food.idd] = food
-
-def get_leaderboard():
-    pass
-
-#sends the position, size, username, of all players, sends id and position of all food for new player
-def initial(jsonMessage : string): #creates json object {"type":init,"username":newplayerusername,"players":[{"username":username,'x':int,'y':int,"size":int}...],"foods":[{'idd':str,'x':int,'y':int}...]}
-    dict0 = json.loads(jsonMessage)
-    dict1 = {"type":"init","username":dict0.username}
-    players = []
-    for player in player_dict.values():
-        dict2 = {"username":player.username,"x":player.position_x,"y":player.position_y,"size":player.size}
-        players.append(dict2)
-    foods=[]
-    for food in food_dict.values():
-        dict3 = {"id":food.id,"x":food.position_x,"y":food.position_y}
-        foods.append(dict3)
-    dict1["players"] = players
-    dict1["foods"] = foods
-    jInit = json.dumps(dict1)
-    return jInit
-
-def GetsPositionsJson():#gets the json message of all the positions to all users
-    dict1 = {"type":"update"} #{"type":"update","players":[{"username":str,"x":int,"y":int,"size":int}....]}
-    players = []
-    for player in player_dict.values():
-        dict2 = {"username":player.username,"x":player.position_x,"y":player.position_y, "size":player.size}
-        players.append(dict2)
-    dict1["players"] = players
-    jUpdate = json.dumps(dict1)
-    return jUpdate
-
-#recieves ate food message
-def ate_food(jsonMessage: string):#{"type":"ate_food","username":username,"idd":foodId,"size":player size}
-
-
-
-    message = json.loads(jsonMessage)
-    username = message["username"]
-    foodId = message["idd"]
-    player = player_dict.get(username)
-    player.size = player.size + 1
-    player_dict[username] = player
-    del food_dict[foodId]
-    dict1 = {"type":"ate_food","username":username,"idd":foodId,"size":player.size}
-    jMess = json.dumps(dict1)
-
-
-
-
-
-
-    return jMess
-
-
-def winner(player1, player2):#returns dict with winner and loser #might want to comment out later but I'm unsure if we're deciding who is ate client or server side
-    if player1.size > player2.size:
-        player1.size += player2.size #player 1 gets player 2 size
-        #speed_update(player1) #updates player 1 speed
-        player_dict[player1.username] = player1
-        del player_dict[player2.username]  # player 2 loses and is deleted from player_dict
-        return {"loser":player2,"winner":player1} #return player2 to broadcast defeat?
-    elif player1.size < player2.size:
-        player2.size += player1.size  # player 1 gets player 2 size
-        #speed_update(player2)
-        player_dict[player2.username] = player2
-        del player_dict[player1.username]
-        return {"loser":player1, "winner":player2}
-    else:
-        p = random.choice([player1, player2])
-        if p.username == player1.username:#player 1 is decided winner
-            player1.size += player2.size #increase player 1 by player2 size
-            #speed_update(player1) #update speed
-            player_dict[player1.username] = player1
-            del player_dict[player2.username]  # del player 2
-            return {"loser":player2,"winner":player1} #return player2 to broadcast defeat?
-        else:#player 2 is decided winner
-            player2.size += player1.size
-            #speed_update(player2)
-            player_dict[player2.username] = player2
-            del player_dict[player1.username]
-            return {"loser":player1, "winner":player2}
-
-
-
-def add_buff_debuff(player : Player, buff : string):
-    if buff in player.debuffs:
-        player.debuffs[buff] = True
-        if buff == "debuff_speed":
-            if player.speed > 1:
-                player.speed = player.speed - 1
-        else: #debuff_size
-            if player.size>=25:
-                player.size = player.size - 5
-            else:
-                player.size = 20
-    if buff in player.buffs:
-        player.buffs[buff] = True
-        if buff == "buff_speed":
-            player.speed = player.speed + 1
-        if buff == "buff_size":
-            player.size = player.size + 5
-    player_dict[player.username] = player
-    return player
-
-def remove_buff_debuff(player : Player, buff : string): #maybe should be on a seperate thread to time it, threading.timer(wait, function)
-    if buff in player.debuffs:
-        if buff == "debuff_speed":
-            player.speed = player.speed + 1
-        else:
-            player.size = player.size + 5
-        player.debuffs[buff] = False
-    if buff in player.buffs:
-        player.buffs[buff] = False
-        if buff == "buff_speed":
-            if player.speed > 1:
-                player.speed = player.speed - 1
-        else:
-            if player.size>=25:
-                player.size = player.size - 5
-            else:
-                player.size = 20
-    player_dict[player.username] = player
-    return player
-
-#if we are following agar.io bigger size will mean slower speeds, to be called after eating
-def speed_update(player):
-    if player.size >= 100:#these are all stand-in values for now feel free to change
-        player.speed = 1
-    elif player.size >= 75:
-        player.speed = 2
-    elif player.size >= 50:
-        player.speed = 3
-    elif player.size >= 25:
-        player.speed = 4
-    else:
-        player.speed = 5
-    if player.buffs == "buff_speed": #making sure is consistent with buffs/debuffs #hopefully debuffs/buffs doesn't change within the function
-        player.speed = player.speed + 1
-    if player.debuffs == "debuff_speed":
-        if player.speed > 1:
-            player.speed = player.speed - 1
-    player_dict[player.username] = player
-    return player
 
 # --- Achievement Definitions ---
 ACHIEVEMENTS = {
@@ -1666,7 +1261,6 @@ ACHIEVEMENTS = {
     "eaten_5": {"name": "Cannibal", "description": "Eat 5 players.", "criteria": lambda stats: stats.get("players_eaten_lifetime", 0) >= 5},
     "eaten_20": {"name": "Apex Predator", "description": "Eat 20 players.", "criteria": lambda stats: stats.get("players_eaten_lifetime", 0) >= 20},
 }
-# --- End Achievement Definitions ---
 
 # --- Achievement Helper Function ---
 async def check_and_grant_achievements(username: str):
@@ -1754,7 +1348,6 @@ async def check_in_game_score_achievements(username: str, current_power: int):
             {"username": username},
             {"$addToSet": {"unlocked_achievements": {"$each": newly_unlocked}}}
         )
-
         # Send notifications via WebSocket
         for client_id, client_info in clients.items():
             if client_info.get("username") == username:
@@ -1774,5 +1367,202 @@ async def check_in_game_score_achievements(username: str, current_power: int):
                         except Exception as e:
                             print(f"[AchievementsScore] Error sending notification to {username}: {e}")
                 break
-# --- End In-Game Score Helper ---
+    
+'''
+# --- Logging Middleware and Functions (Keep as is) ---
+def request_log(request : Request, response : Response ):
+   tim = datetime.datetime.now()
+   content ="time: "+ tim.strftime("%m/%d/%Y, %H:%M:%S") + "\n client " + str(request.client.host)+"\n method " + str(request.method) + "\n url path " + str(request.url.path) + '\n response code ' + str(response.status_code) +"\n\n"
+   with open("/request_logs/request_logs.txt", "a") as f:
+        f.write(content)
 
+def fullLogging(request : Request, response : Response ):
+    req = b""
+    reqS = request.method + request.url.path
+    for header in request.headers:
+        reqS = reqS + header +": "+ request.headers[header]# need to take out auth tokens and handle cookies better
+    req = reqS.encode() + b"\n"
+    res = b""
+    with open("/fullreq.txt","ab") as f:
+        f.write(req)
+    with open("/fullres.txt","ab") as f:
+        f.write(res)
+
+#to do docker logs, volume
+def errorLog(error : string, tb : string):
+    content = "error: " + error + "\n" + "traceback: "+ tb +"\n\n"
+    with open("/error_log.txt","b") as f:
+        f.write(content)
+'''
+
+'''
+leaderboard = []#list of dicts containing size and user
+player_dict = {}#will be added to when new user joins, username:player
+class Player:
+    def __init__(self, username):
+        self.username = username #these are stand in numbers if you want to change them
+        self.position_x : int
+        self.position_y : int
+        self.size = 20 #starting size
+        #self.speed = 5
+        #self.debuffs = {"debuff_speed":False,"debuff_size":False }#assuming maybe 2 debuffs and 2 buffs, increase and decrease size and speed temp
+        #self.buffs = {"buff_speed":False,"buff_size":False }
+
+food_dict ={}
+class Food:
+    def __init__(self, foodId, x,y):
+        self.position_x = x
+        self.position_y = y
+        self.idd = foodId
+
+def recievedMove(jsonMessage: string):
+    message = json.loads(jsonMessage)
+    username = message["username"]
+    player = player_dict.get(username)
+    player.position_x = message["x"]
+    player.position_y = message["y"]
+    player_dict[username] = player
+
+def add_player(jsonMessage: string):
+    message = json.loads(jsonMessage)
+    username = message["username"]
+    player = Player(username)
+    player_dict[username] = player #adds player to player dict
+
+def add_food(jsonMessage: string): 
+    message = json.loads(jsonMessage)
+    foodId = message["foodId"]
+    x = message["x"]
+    y = message["y"]
+    food = Food(foodId, x,y)
+    food_dict[food.idd] = food
+
+def get_leaderboard():
+    pass
+
+def initial(jsonMessage : string):
+    dict0 = json.loads(jsonMessage)
+    dict1 = {"type":"init","username":dict0.username}
+    players = []
+    for player in player_dict.values():
+        dict2 = {"username":player.username,"x":player.position_x,"y":player.position_y,"size":player.size}
+        players.append(dict2)
+    foods=[]
+    for food in food_dict.values():
+        dict3 = {"id":food.id,"x":food.position_x,"y":food.position_y}
+        foods.append(dict3)
+    dict1["players"] = players
+    dict1["foods"] = foods
+    jInit = json.dumps(dict1)
+    return jInit
+
+def GetsPositionsJson():
+    dict1 = {"type":"update"} #{"type":"update","players":[{"username":str,"x":int,"y":int,"size":int}....]}
+    players = []
+    for player in player_dict.values():
+        dict2 = {"username":player.username,"x":player.position_x,"y":player.position_y, "size":player.size}
+        players.append(dict2)
+    dict1["players"] = players
+    jUpdate = json.dumps(dict1)
+    return jUpdate
+
+def ate_food(jsonMessage: string):
+    message = json.loads(jsonMessage)
+    username = message["username"]
+    foodId = message["idd"]
+    player = player_dict.get(username)
+    player.size = player.size + 1
+    player_dict[username] = player
+    del food_dict[foodId]
+    dict1 = {"type":"ate_food","username":username,"idd":foodId,"size":player.size}
+    jMess = json.dumps(dict1)
+    return jMess
+
+def winner(player1, player2):
+    if player1.size > player2.size:
+        player1.size += player2.size #player 1 gets player 2 size
+        #speed_update(player1) #updates player 1 speed
+        player_dict[player1.username] = player1
+        del player_dict[player2.username]  # player 2 loses and is deleted from player_dict
+        return {"loser":player2,"winner":player1} #return player2 to broadcast defeat?
+    elif player1.size < player2.size:
+        player2.size += player1.size  # player 1 gets player 2 size
+        #speed_update(player2)
+        player_dict[player2.username] = player2
+        del player_dict[player1.username]
+        return {"loser":player1, "winner":player2}
+    else:
+        p = random.choice([player1, player2])
+        if p.username == player1.username:#player 1 is decided winner
+            player1.size += player2.size #increase player 1 by player2 size
+            #speed_update(player1) #update speed
+            player_dict[player1.username] = player1
+            del player_dict[player2.username]  # del player 2
+            return {"loser":player2,"winner":player1} #return player2 to broadcast defeat?
+        else:#player 2 is decided winner
+            player2.size += player1.size
+            #speed_update(player2)
+            player_dict[player2.username] = player2
+            del player_dict[player1.username]
+            return {"loser":player1, "winner":player2}
+
+def add_buff_debuff(player : Player, buff : string):
+    if buff in player.debuffs:
+        player.debuffs[buff] = True
+        if buff == "debuff_speed":
+            if player.speed > 1:
+                player.speed = player.speed - 1
+        else: #debuff_size
+            if player.size>=25:
+                player.size = player.size - 5
+            else:
+                player.size = 20
+    if buff in player.buffs:
+        player.buffs[buff] = True
+        if buff == "buff_speed":
+            player.speed = player.speed + 1
+        if buff == "buff_size":
+            player.size = player.size + 5
+    player_dict[player.username] = player
+    return player
+
+def remove_buff_debuff(player : Player, buff : string): 
+    if buff in player.debuffs:
+        if buff == "debuff_speed":
+            player.speed = player.speed + 1
+        else:
+            player.size = player.size + 5
+        player.debuffs[buff] = False
+    if buff in player.buffs:
+        player.buffs[buff] = False
+        if buff == "buff_speed":
+            if player.speed > 1:
+                player.speed = player.speed - 1
+        else:
+            if player.size>=25:
+                player.size = player.size - 5
+            else:
+                player.size = 20
+    player_dict[player.username] = player
+    return player
+
+def speed_update(player):
+    if player.size >= 100:#these are all stand-in values for now feel free to change
+        player.speed = 1
+    elif player.size >= 75:
+        player.speed = 2
+    elif player.size >= 50:
+        player.speed = 3
+    elif player.size >= 25:
+        player.speed = 4
+    else:
+        player.speed = 5
+    if player.buffs == "buff_speed": #making sure is consistent with buffs/debuffs #hopefully debuffs/buffs doesn't change within the function
+        player.speed = player.speed + 1
+    if player.debuffs == "debuff_speed":
+        if player.speed > 1:
+            player.speed = player.speed - 1
+    player_dict[player.username] = player
+    return player
+'''
+ 
