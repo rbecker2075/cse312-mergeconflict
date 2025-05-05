@@ -354,9 +354,9 @@ function handleSocketMessage(event) {
     playerPower = 1;
     playerPowerText.setText('1');
     
-    // Reset player position
-    player.x = worldWidth / 2;
-    player.y = worldHeight / 2;
+    // Reset player position to random position instead of center
+    player.x = Math.random() * worldWidth;
+    player.y = Math.random() * worldHeight;
     
     // Update timer with full duration
     const minutes = Math.floor(data.time_remaining / 60);
@@ -385,8 +385,8 @@ function handleSocketMessage(event) {
 
     // Ensure player sprite & UI are visible and positioned (visual reset)
     if(player) {
-        player.x = worldWidth / 2; 
-        player.y = worldHeight / 2;
+        player.x = Math.random() * worldWidth;
+        player.y = Math.random() * worldHeight;
         player.setVisible(true);
         playerVisible = true;
         playerInputDisabled = false; 
@@ -528,9 +528,11 @@ function create() {
     console.log("Connected to server, initializing game...");
 
     // --- Initialize Game Elements AFTER successful connection ---
-    // Spawn player in the middle of the world
+    // Spawn player in a random location instead of the middle
+    const randomX = Math.random() * worldWidth;
+    const randomY = Math.random() * worldHeight;
     const playerTexture = scene.textures.exists('customPlayerSprite') ? 'customPlayerSprite' : 'playerSprite';
-    player = scene.physics.add.sprite(worldWidth / 2, worldHeight / 2, playerTexture);
+    player = scene.physics.add.sprite(randomX, randomY, playerTexture);
     player.setOrigin(0.5, 0.5);
     player.setScale(playerInitialSize);
     player.setCollideWorldBounds(true);

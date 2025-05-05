@@ -841,6 +841,12 @@ async def game_ws(websocket: WebSocket):
                     await update_total_score(disconnected_username, disconnected_score)
                     # --- End score update ---
                 print(f"Player {player_id} disconnected.") # Removed broadcast remove message
+                
+                # Broadcast remove message to all remaining clients
+                await broadcast_message({
+                    "type": "remove",
+                    "id": player_id
+                })
     except Exception as e:
         err_s = str(e)
         tbs = traceback.format_exc()
