@@ -407,6 +407,13 @@ function handleSocketMessage(event) {
     }
   } else if (data.type === "eaten") {
     // Player was eaten
+    fetch('/api/addDeaths', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+          })
+
     playerVisible = false;
     playerInputDisabled = true;
     

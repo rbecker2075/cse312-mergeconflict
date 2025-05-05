@@ -525,8 +525,25 @@ async def game_ws(websocket: WebSocket):
                         winner = max(clients.items(), key=lambda x: x[1]["power"])
                         winner_username = winner[1].get("username") or "Guest"
 
+                        if winner_username == username:
+                            stats = playerStats_collection.find_one({"username": winner_username})
+
+                            # print(winner_username)
+                            playerStats_collection.update_one(
+                                {"username": winner_username},  # Match by username
+                                {"$set": {"gamesWon": stats["gamesWon"] + 1}},  # Update the selected field
+                                upsert=True  # Create a new document if none exists
+                            )
+
+
+
                     winner_display_duration = 5 # How long to show winner name
                     reset_countdown_duration = 10 # How long the "New game starting" countdown lasts
+
+
+
+
+
 
                     # Send game over message to all clients
                     for client in clients.values():
@@ -629,6 +646,19 @@ async def game_ws(websocket: WebSocket):
                         # --- End Achievement Check --
                 # Remove collected food and notify all clients
                 if food_to_remove:
+
+                    stats = playerStats_collection.find_one({"username": username})
+
+                    playerStats_collection.update_one(
+                        {"username": username},  # Match by username
+                        {"$set": {"pellets": stats["pellets"] + 1}},  # Update the selected field
+                        upsert=True  # Create a new document if none exists
+                    )
+
+
+
+
+
                     for food in food_to_remove:
                         food_instances.remove(food)
                     # Send food update to all clients
@@ -711,6 +741,17 @@ async def game_ws(websocket: WebSocket):
 
                                 # --- Check winner's score achievements after power increase ---
                                 winner_username = winner.get("username") # Already got this above
+
+                                stats = playerStats_collection.find_one({"username": winner_username})
+
+                                playerStats_collection.update_one(
+                                    {"username": winner_username},  # Match by username
+                                    {"$set": {"kills": stats["kills"] + 1}},  # Update the selected field
+                                    upsert=True  # Create a new document if none exists
+                                )
+
+
+
                                 new_winner_power = winner["power"]
                                 if winner_username:
                                     asyncio.create_task(check_in_game_score_achievements(winner_username, new_winner_power))
@@ -824,6 +865,50 @@ class PlayerStatsResponse(BaseModel):
     kills: int
     pellets: int
     skinFileName: str
+
+
+
+       # gamesWon=stats["gamesWon"],
+      #  deaths=stats["deaths"],
+     #   kills=stats["kills"],
+    #    pellets=stats["pellets"],
+
+
+
+
+@app.post("/api/addDeaths")
+async def add_Deaths(username: Optional[str] = Depends(get_current_user)):
+    if not username:
+        raise HTTPException(status_code=401, detail="Unauthorized: Username is required")
+
+    # Fetch stats from the database using the username
+    stats = playerStats_collection.find_one({"username": username})
+
+    playerStats_collection.update_one(
+        {"username": username},  # Match by username
+        {"$set": {"deaths": stats["deaths"]+1 }},  # Update the selected field
+        upsert=True  # Create a new document if none exists
+    )
+
+    return
+
+@app.post("/api/addKills")
+async def add_Kills(username: Optional[str] = Depends(get_current_user)):
+
+    if not username:
+        raise HTTPException(status_code=401, detail="Unauthorized: Username is required")
+
+    # Fetch stats from the database using the username
+    stats = playerStats_collection.find_one({"username": username})
+
+    playerStats_collection.update_one(
+        {"username": username},  # Match by username
+        {"$set": {"kills": stats["kills"]+1 }},  # Update the selected field
+        upsert=True  # Create a new document if none exists
+    )
+
+    return
+
 
 
 @app.get("/api/playerStats", response_model=PlayerStatsResponse)
@@ -1368,6 +1453,9 @@ def GetsPositionsJson():#gets the json message of all the positions to all users
 
 #recieves ate food message
 def ate_food(jsonMessage: string):#{"type":"ate_food","username":username,"idd":foodId,"size":player size}
+
+
+
     message = json.loads(jsonMessage)
     username = message["username"]
     foodId = message["idd"]
@@ -1377,6 +1465,12 @@ def ate_food(jsonMessage: string):#{"type":"ate_food","username":username,"idd":
     del food_dict[foodId]
     dict1 = {"type":"ate_food","username":username,"idd":foodId,"size":player.size}
     jMess = json.dumps(dict1)
+
+
+
+
+
+
     return jMess
 
 
